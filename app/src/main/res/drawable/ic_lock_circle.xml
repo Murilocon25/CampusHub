@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <path
+        android:pathData="M32,2 A30,30 0 1,0 32,62 A30,30 0 1,0 32,2 Z"
+        android:fillColor="@color/login_field_bg" />
+
+    <path
+        android:pathData="M32,20 C28.7,20 26,22.7 26,26 L26,29 L24,29 C22.9,29 22,29.9 22,31 L22,42 C22,43.1 22.9,44 24,44 L40,44 C41.1,44 42,43.1 42,42 L42,31 C42,29.9 41.1,29 40,29 L38,29 L38,26 C38,22.7 35.3,20 32,20 Z M32,23 C33.66,23 35,24.34 35,26 L35,29 L29,29 L29,26 C29,24.34 30.34,23 32,23 Z"
+        android:fillColor="@color/white" />
+
+</vector>

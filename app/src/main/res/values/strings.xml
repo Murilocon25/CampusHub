@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">loginFirebase</string>
+
+    <string name="login_title">Bem-vindo!</string>
+    <string name="login_subtitle">Entre na sua conta para continuar</string>
+    <string name="hint_email">E-mail</string>
+    <string name="hint_senha">Senha</string>
+    <string name="hint_confirmar_senha">Confirmar senha</string>
+    <string name="btn_entrar">Entrar</string>
+    <string name="txt_cadastro">Ainda não possui uma conta? Cadastre-se</string>
+
+    <string name="register_title">Criar conta</string>
+    <string name="register_subtitle">Preencha os dados para se cadastrar</string>
+    <string name="btn_cadastrar">Cadastrar</string>
+    <string name="txt_voltar_login">Já possui uma conta? Fazer login</string>
+
+    <string name="login_realizado">Login realizado!</string>
+    <string name="bem_vindo_de_volta">Sua autenticação foi confirmada com sucesso</string>
+    <string name="logado_como">Logado como</string>
+    <string name="btn_sair">Sair</string>
+
+    <string name="erro_campos_vazios">Preencha todos os campos</string>
+    <string name="erro_senhas_diferentes">As senhas não coincidem</string>
+</resources>

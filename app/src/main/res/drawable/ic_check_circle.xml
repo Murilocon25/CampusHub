@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="88dp"
+    android:height="88dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <path
+        android:pathData="M32,2 A30,30 0 1,0 32,62 A30,30 0 1,0 32,2 Z"
+        android:fillColor="@color/login_button" />
+
+    <path
+        android:pathData="M20,33 L28,41 L45,23"
+        android:strokeColor="@color/text_title"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+</vector>

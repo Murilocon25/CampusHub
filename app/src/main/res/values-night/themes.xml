@@ -1,0 +1,16 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Tema base do app, usando as mesmas cores já aplicadas nas telas -->
+    <style name="Theme.LoginFirebase" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Cor principal (mesma cor de fundo dos campos de texto) -->
+        <item name="colorPrimary">@color/login_field_bg</item>
+        <item name="colorPrimaryVariant">@color/login_field_bg</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <!-- Cor secundária (mesma cor do botão de entrar) -->
+        <item name="colorSecondary">@color/login_button</item>
+        <item name="colorSecondaryVariant">@color/login_button</item>
+        <item name="colorOnSecondary">@color/text_title</item>
+        <!-- Barra de status combinando com o restante do app -->
+        <item name="android:statusBarColor">@color/login_field_bg</item>
+        <item name="android:windowBackground">@color/screen_background</item>
+    </style>
+</resources>
