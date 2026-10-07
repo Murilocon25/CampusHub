@@ -1,15 +1,38 @@
+# Gradle and Kotlin caches
+.gradle/
+.kotlin/
+**/build/
+
+# Android Studio / IntelliJ user-specific files
+.idea/**
+!.idea/codeStyles/
+!.idea/runConfigurations/
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
 local.properties
+
+# Android build outputs and local captures
+*.apk
+*.aab
+*.ap_
+*.dex
+/captures/
+/.externalNativeBuild/
+/.cxx/
+
+# Local signing credentials
+*.jks
+*.keystore
+keystore.properties
+
+# Firebase CLI local state and logs
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# OS/editor temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

@@ -45,7 +45,7 @@ class LoginActivity : AppCompatActivity() {
                     btnLogin.isEnabled = true
 
                     if (task.isSuccessful) {
-                        abrirTelaDeSucesso(emailTexto)
+                        abrirEventos()
                     } else {
                         Toast.makeText(
                             this,
@@ -57,8 +57,17 @@ class LoginActivity : AppCompatActivity() {
         }
 
         txtCadastro.setOnClickListener {
-            startActivity(Intent(this, RegisterActivity::class.java))
+        val endereco = email.text.toString().trim()
+            if (endereco.isBlank()){
+                email.error ="informe seu e-mail primeiro"
+            }else{
+                auth.sendPasswordResetEmail(endereco).addOnCompleteListener { task ->
+                    Toast.makeText(this, if(isSuccessful) "enviamos um link de reuperação para seu e-mail" else "não foi possivel enviar link de recuperação: ${task.exeption?.localizedMessage}", Toast.LENGHT_LONG).show()
+                }
+            }
         }
+
+
     }
 
     override fun onStart() {
@@ -66,14 +75,12 @@ class LoginActivity : AppCompatActivity() {
         // Se o usuário já estiver logado (sessão anterior), pula direto para a tela de sucesso
         val usuarioAtual = auth.currentUser
         if (usuarioAtual != null) {
-            abrirTelaDeSucesso(usuarioAtual.email ?: "")
-        }
+            abrirEventos()        }
     }
 
-    private fun abrirTelaDeSucesso(email: String) {
-        val intent = Intent(this, SuccessActivity::class.java)
-        intent.putExtra(SuccessActivity.EXTRA_EMAIL, email)
-        startActivity(intent)
+    private fun abrirEventos(email: String) {
+        val intent = Intent(this, EventsActivity::class.java)
+       startActivity(intent)
         finish()
     }
 }
