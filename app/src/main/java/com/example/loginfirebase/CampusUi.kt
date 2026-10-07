@@ -9,10 +9,19 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 
 
 data class CampusEvent(val id: String, val title: String, val date: String, val place: String, val description: String)
+
+fun DocumentSnapshot.toCampusEvent() = CampusEvent(
+    id = id,
+    title = getString("title").orEmpty(),
+    date = getString("date").orEmpty(),
+    place = getString("place").orEmpty(),
+    description = getString("description").orEmpty()
+)
 
 object CampusData {
     val events = listOf(
