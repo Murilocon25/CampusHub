@@ -25,6 +25,7 @@ class LoginActivity : AppCompatActivity() {
         val senha = findViewById<EditText>(R.id.editSenha)
         val btnLogin = findViewById<Button>(R.id.btnLogin)
         val txtCadastro = findViewById<TextView>(R.id.txtCadastro)
+        val txtRecuperarSenha = findViewById<TextView>(R.id.txtRecuperarSenha)
         val progressBar = findViewById<ProgressBar>(R.id.progressBar)
 
         btnLogin.setOnClickListener {
@@ -57,13 +58,23 @@ class LoginActivity : AppCompatActivity() {
         }
 
         txtCadastro.setOnClickListener {
-        val endereco = email.text.toString().trim()
-            if (endereco.isBlank()){
-                email.error ="informe seu e-mail primeiro"
-            }else{
-                auth.sendPasswordResetEmail(endereco).addOnCompleteListener { task ->
-                    Toast.makeText(this, if(isSuccessful) "enviamos um link de reuperação para seu e-mail" else "não foi possivel enviar link de recuperação: ${task.exeption?.localizedMessage}", Toast.LENGHT_LONG).show()
+            startActivity(Intent(this, RegisterActivity::class.java))
+        }
+
+        txtRecuperarSenha.setOnClickListener {
+            val endereco = email.text.toString().trim()
+            if (endereco.isBlank()) {
+                email.error = "Informe seu e-mail primeiro"
+                return@setOnClickListener
+            }
+
+            auth.sendPasswordResetEmail(endereco).addOnCompleteListener { task ->
+                val mensagem = if (task.isSuccessful) {
+                    "Se o e-mail estiver cadastrado, você receberá as instruções de recuperação."
+                } else {
+                    "Não foi possível enviar o link: ${task.exception?.localizedMessage}"
                 }
+                Toast.makeText(this, mensagem, Toast.LENGTH_LONG).show()
             }
         }
 
@@ -72,15 +83,16 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Se o usuário já estiver logado (sessão anterior), pula direto para a tela de sucesso
+        // Se o usuário já estiver logado, abre a lista de eventos.
         val usuarioAtual = auth.currentUser
         if (usuarioAtual != null) {
-            abrirEventos()        }
+            abrirEventos()
+        }
     }
 
-    private fun abrirEventos(email: String) {
+    private fun abrirEventos() {
         val intent = Intent(this, EventsActivity::class.java)
-       startActivity(intent)
+        startActivity(intent)
         finish()
     }
 }

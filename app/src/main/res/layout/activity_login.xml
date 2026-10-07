@@ -63,6 +63,18 @@
                     android:layout_marginBottom="14dp"
                     android:autofillHints="emailAddress" />
 
+                <TextView
+                    android:id="@+id/txtRecuperarSenha"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Esqueci minha senha"
+                    android:textColor="@color/text_subtitle"
+                    android:padding="8dp"
+                    android:layout_gravity="end"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+
                 <EditText
                     android:id="@+id/editSenha"
                     android:layout_width="match_parent"
