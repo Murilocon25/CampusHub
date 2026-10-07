@@ -51,12 +51,12 @@ class RegisterActivity : AppCompatActivity() {
                     btnCadastrar.isEnabled = true
 
                     if (task.isSuccessful) {
-                        Toast.makeText(this, "Cadastro realizado com sucesso!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.register_success), Toast.LENGTH_SHORT).show()
                         finish() // volta para a tela de login
                     } else {
                         Toast.makeText(
                             this,
-                            "Erro no cadastro: ${task.exception?.localizedMessage}",
+                            getString(R.string.register_error, task.exception?.localizedMessage.orEmpty()),
                             Toast.LENGTH_LONG
                         ).show()
                     }

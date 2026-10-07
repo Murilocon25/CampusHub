@@ -2,9 +2,7 @@ package com.example.loginfirebase
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.LinearLayout
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
 
@@ -12,30 +10,34 @@ class EventsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!requireUser()) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
-        val root = buildCampusScreen("Eventos do campus")
+        val root = buildCampusScreen(getString(R.string.events_title))
         val body = root.tag as LinearLayout
-        body.addCampusText("Encontre uma atividade para chamar de sua.", 15f)
-        body.addCampusButton("Sair da conta") {
+        body.addCampusText(getString(R.string.events_intro), 15f)
+        body.addCampusButton(getString(R.string.logout)) {
             FirebaseAuth.getInstance().signOut()
             startActivity(Intent(this, LoginActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)); finish()
         }
 
         val eventList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(eventList)
-        eventList.addCampusText("Carregando eventos...")
+        eventList.addCampusText(getString(R.string.events_loading))
 
         FirebaseFirestoreProvider.db.collection("events").get()
             .addOnSuccessListener { snapshot ->
                 eventList.removeAllViews()
                 if (snapshot.isEmpty) {
-                    eventList.addCampusText("Nenhum evento disponível no momento.")
+                    eventList.addCampusText(getString(R.string.events_empty))
                     return@addOnSuccessListener
                 }
 
                 snapshot.documents.forEach { document ->
                     val event = document.toCampusEvent()
-                    eventList.addCampusText("${event.title}\n${event.date}\n${event.place}", 17f, bold = true)
-                    eventList.addCampusButton("Ver detalhes") {
+                    eventList.addCampusText(
+                        getString(R.string.event_list_item, event.title, event.date, event.place),
+                        17f,
+                        bold = true
+                    )
+                    eventList.addCampusButton(getString(R.string.event_details_button)) {
                         startActivity(
                             Intent(this, EventDetailActivity::class.java)
                                 .putExtra(EventDetailActivity.EXTRA_EVENT_ID, event.id)
@@ -45,7 +47,7 @@ class EventsActivity : AppCompatActivity() {
             }
             .addOnFailureListener {
                 eventList.removeAllViews()
-                eventList.addCampusText("Não foi possível carregar os eventos. Verifique a conexão e as regras do Firestore.")
+                eventList.addCampusText(getString(R.string.events_load_error))
             }
     }
 }
@@ -61,16 +63,16 @@ class MyEventsActivity : AppCompatActivity() {
             return
         }
 
-        val root = buildCampusScreen("Meus Eventos")
+        val root = buildCampusScreen(getString(R.string.my_events_title))
         val body = root.tag as LinearLayout
-        body.addCampusText("Eventos em que você confirmou presença", 15f)
+        body.addCampusText(getString(R.string.my_events_subtitle), 15f)
 
         val eventList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
         body.addView(eventList)
-        eventList.addCampusText("Carregando suas inscrições...")
+        eventList.addCampusText(getString(R.string.my_events_loading))
 
         FirebaseFirestoreProvider.db
             .registrations(user.uid)
@@ -81,7 +83,7 @@ class MyEventsActivity : AppCompatActivity() {
                 val eventIds = registrations.documents.map { it.id }
 
                 if (eventIds.isEmpty()) {
-                    eventList.addCampusText("Você ainda não está inscrito em nenhum evento.")
+                    eventList.addCampusText(getString(R.string.my_events_empty))
                     return@addOnSuccessListener
                 }
 
@@ -95,11 +97,11 @@ class MyEventsActivity : AppCompatActivity() {
                                 val event = eventDocument.toCampusEvent()
 
                                 eventList.addCampusText(
-                                    "${event.title}\n${event.date} · ${event.place}",
+                                    getString(R.string.my_event_item, event.title, event.date, event.place),
                                     17f,
                                     bold = true
                                 )
-                                eventList.addCampusButton("Abrir evento") {
+                                eventList.addCampusButton(getString(R.string.my_event_open)) {
                                     startActivity(
                                         Intent(this, EventDetailActivity::class.java)
                                             .putExtra(
@@ -109,23 +111,17 @@ class MyEventsActivity : AppCompatActivity() {
                                     )
                                 }
                             } else {
-                                eventList.addCampusText(
-                                    "Um evento da sua lista não está mais disponível."
-                                )
+                                eventList.addCampusText(getString(R.string.my_event_missing))
                             }
                         }
                         .addOnFailureListener {
-                            eventList.addCampusText(
-                                "Não foi possível carregar um dos eventos."
-                            )
+                            eventList.addCampusText(getString(R.string.my_event_load_error))
                         }
                 }
             }
             .addOnFailureListener {
                 eventList.removeAllViews()
-                eventList.addCampusText(
-                    "Não foi possível carregar suas inscrições. Verifique a conexão e as regras do Firestore."
-                )
+                eventList.addCampusText(getString(R.string.my_events_load_error))
             }
     }
 }

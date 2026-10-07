@@ -21,13 +21,13 @@ class EventDetailActivity : AppCompatActivity(){
             return
         }
 
-        val body = buildCampusScreen("Detalhes do evento").tag as LinearLayout
-        body.addCampusText("Carregando detalhes do evento...")
+        val body = buildCampusScreen(getString(R.string.event_details_title)).tag as LinearLayout
+        body.addCampusText(getString(R.string.event_details_loading))
 
         FirebaseFirestoreProvider.db.collection("events").document(eventId).get()
             .addOnSuccessListener { document ->
                 if (!document.exists()) {
-                    Toast.makeText(this, "Evento não encontrado.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.event_not_found), Toast.LENGTH_SHORT).show()
                     finish()
                     return@addOnSuccessListener
                 }
@@ -35,8 +35,8 @@ class EventDetailActivity : AppCompatActivity(){
                 val event = document.toCampusEvent()
                 body.removeAllViews()
                 body.addCampusText(event.title, 23f, bold = true)
-                body.addCampusText("📅  ${event.date}", 16f)
-                body.addCampusText("📍  ${event.place}", 16f)
+                body.addCampusText(getString(R.string.event_date, event.date), 16f)
+                body.addCampusText(getString(R.string.event_place, event.place), 16f)
                 body.addCampusText(event.description, 17f)
 
                 val registration = FirebaseFirestoreProvider.db
@@ -45,15 +45,24 @@ class EventDetailActivity : AppCompatActivity(){
                 registration.get()
                     .addOnSuccessListener { snapshot ->
                         val enrolled = snapshot.exists()
-                        body.addCampusButton(if (enrolled) "Cancelar inscrição" else "Inscrever-se") {
+                        val buttonText = if (enrolled) {
+                            getString(R.string.registration_cancel)
+                        } else {
+                            getString(R.string.registration_join)
+                        }
+                        body.addCampusButton(buttonText) {
                             if (enrolled) {
                                 registration.delete()
                                     .addOnSuccessListener {
-                                        Toast.makeText(this, "Inscrição cancelada.", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(this, getString(R.string.registration_cancelled), Toast.LENGTH_SHORT).show()
                                         recreate()
                                     }
                                     .addOnFailureListener {
-                                        Toast.makeText(this, "Não foi possível cancelar: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(
+                                            this,
+                                            getString(R.string.registration_cancel_error, it.localizedMessage.orEmpty()),
+                                            Toast.LENGTH_LONG
+                                        ).show()
                                     }
                             } else {
                                 registration.set(
@@ -64,22 +73,26 @@ class EventDetailActivity : AppCompatActivity(){
                                     )
                                 )
                                     .addOnSuccessListener {
-                                        Toast.makeText(this, "Inscrição confirmada!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(this, getString(R.string.registration_confirmed), Toast.LENGTH_SHORT).show()
                                         recreate()
                                     }
                                     .addOnFailureListener {
-                                        Toast.makeText(this, "Não foi possível concluir a inscrição: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(
+                                            this,
+                                            getString(R.string.registration_error, it.localizedMessage.orEmpty()),
+                                            Toast.LENGTH_LONG
+                                        ).show()
                                     }
                             }
                         }
                     }
                     .addOnFailureListener {
-                        body.addCampusText("Não foi possível consultar sua inscrição. Verifique a conexão e as regras do Firestore.")
+                        body.addCampusText(getString(R.string.registration_check_error))
                     }
             }
             .addOnFailureListener {
                 body.removeAllViews()
-                body.addCampusText("Não foi possível carregar o evento. Verifique a conexão e as regras do Firestore.")
+                body.addCampusText(getString(R.string.event_load_error))
             }
     }
 }

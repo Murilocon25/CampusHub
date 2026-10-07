@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">loginFirebase</string>
+    <string name="app_name">CampusHub</string>
 
     <string name="login_title">Bem-vindo!</string>
     <string name="login_subtitle">Entre na sua conta para continuar</string>
@@ -21,4 +21,57 @@
 
     <string name="erro_campos_vazios">Preencha todos os campos</string>
     <string name="erro_senhas_diferentes">As senhas não coincidem</string>
+
+    <string name="forgot_password">Esqueci minha senha</string>
+    <string name="reset_email_prompt">Informe seu e-mail primeiro</string>
+    <string name="reset_email_sent">Se o e-mail estiver cadastrado, você receberá as instruções de recuperação.</string>
+    <string name="reset_email_error">Não foi possível enviar o link: %1$s</string>
+    <string name="login_error">Erro no login: %1$s</string>
+    <string name="register_success">Cadastro realizado com sucesso!</string>
+    <string name="register_error">Erro no cadastro: %1$s</string>
+    <string name="email_placeholder">usuario@email.com</string>
+    <string name="unknown_user">usuário</string>
+
+    <string name="events_title">Eventos do campus</string>
+    <string name="events_intro">Encontre uma atividade para chamar de sua.</string>
+    <string name="logout">Sair da conta</string>
+    <string name="events_loading">Carregando eventos...</string>
+    <string name="events_empty">Nenhum evento disponível no momento.</string>
+    <string name="events_load_error">Não foi possível carregar os eventos. Verifique a conexão e as regras do Firestore.</string>
+    <string name="event_list_item">%1$s\n%2$s\n%3$s</string>
+    <string name="event_details_button">Ver detalhes</string>
+
+    <string name="my_events_title">Meus Eventos</string>
+    <string name="my_events_subtitle">Eventos em que você confirmou presença</string>
+    <string name="my_events_loading">Carregando suas inscrições...</string>
+    <string name="my_events_empty">Você ainda não está inscrito em nenhum evento.</string>
+    <string name="my_event_item">%1$s\n%2$s · %3$s</string>
+    <string name="my_event_open">Abrir evento</string>
+    <string name="my_event_missing">Um evento da sua lista não está mais disponível.</string>
+    <string name="my_event_load_error">Não foi possível carregar um dos eventos.</string>
+    <string name="my_events_load_error">Não foi possível carregar suas inscrições. Verifique a conexão e as regras do Firestore.</string>
+
+    <string name="event_details_title">Detalhes do evento</string>
+    <string name="event_details_loading">Carregando detalhes do evento...</string>
+    <string name="event_not_found">Evento não encontrado.</string>
+    <string name="event_date">📅  %1$s</string>
+    <string name="event_place">📍  %1$s</string>
+    <string name="registration_cancel">Cancelar inscrição</string>
+    <string name="registration_join">Inscrever-se</string>
+    <string name="registration_cancelled">Inscrição cancelada.</string>
+    <string name="registration_cancel_error">Não foi possível cancelar: %1$s</string>
+    <string name="registration_confirmed">Inscrição confirmada!</string>
+    <string name="registration_error">Não foi possível concluir a inscrição: %1$s</string>
+    <string name="registration_check_error">Não foi possível consultar sua inscrição. Verifique a conexão e as regras do Firestore.</string>
+    <string name="event_load_error">Não foi possível carregar o evento. Verifique a conexão e as regras do Firestore.</string>
+
+    <string name="profile_title">Perfil</string>
+    <string name="profile_name_hint">Nome</string>
+    <string name="profile_course_hint">Curso</string>
+    <string name="profile_campus_hint">Campus</string>
+    <string name="profile_save">Salvar perfil</string>
+    <string name="profile_name_required">Informe seu nome</string>
+    <string name="profile_updated">Perfil atualizado.</string>
+    <string name="profile_save_error">Não foi possível salvar o perfil.</string>
+    <string name="profile_name_error">Não foi possível atualizar o nome.</string>
 </resources>

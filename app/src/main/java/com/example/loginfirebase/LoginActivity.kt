@@ -50,7 +50,7 @@ class LoginActivity : AppCompatActivity() {
                     } else {
                         Toast.makeText(
                             this,
-                            "Erro no login: ${task.exception?.localizedMessage}",
+                            getString(R.string.login_error, task.exception?.localizedMessage.orEmpty()),
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -64,15 +64,15 @@ class LoginActivity : AppCompatActivity() {
         txtRecuperarSenha.setOnClickListener {
             val endereco = email.text.toString().trim()
             if (endereco.isBlank()) {
-                email.error = "Informe seu e-mail primeiro"
+                email.error = getString(R.string.reset_email_prompt)
                 return@setOnClickListener
             }
 
             auth.sendPasswordResetEmail(endereco).addOnCompleteListener { task ->
                 val mensagem = if (task.isSuccessful) {
-                    "Se o e-mail estiver cadastrado, você receberá as instruções de recuperação."
+                    getString(R.string.reset_email_sent)
                 } else {
-                    "Não foi possível enviar o link: ${task.exception?.localizedMessage}"
+                    getString(R.string.reset_email_error, task.exception?.localizedMessage.orEmpty())
                 }
                 Toast.makeText(this, mensagem, Toast.LENGTH_LONG).show()
             }

@@ -20,7 +20,7 @@ class SuccessActivity : AppCompatActivity() {
         val emailRecebido = intent.getStringExtra(EXTRA_EMAIL)
         val email = emailRecebido?.takeIf { it.isNotBlank() }
             ?: FirebaseAuth.getInstance().currentUser?.email
-            ?: "usuário"
+            ?: getString(R.string.unknown_user)
 
         findViewById<TextView>(R.id.txtEmailUsuario).text = email
 

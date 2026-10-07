@@ -62,7 +62,11 @@ fun AppCompatActivity.buildCampusScreen(title: String): LinearLayout {
         gravity = Gravity.CENTER
         orientation = LinearLayout.HORIZONTAL
     }
-    listOf("Eventos", "Meus Eventos", "Perfil").forEachIndexed { index, label ->
+    listOf(
+        getString(R.string.events_title),
+        getString(R.string.my_events_title),
+        getString(R.string.profile_title)
+    ).forEachIndexed { index, label ->
         val button = Button(this).apply {
             text = label
             isAllCaps = false
