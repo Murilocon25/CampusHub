@@ -39,6 +39,63 @@ class EventDetailActivity : AppCompatActivity(){
                 body.addCampusText(getString(R.string.event_place, event.place), 16f)
                 body.addCampusText(event.description, 17f)
 
+                val favoriteRef = FirebaseFirestoreProvider.db
+                    .favorites(user.uid)
+                    .document(event.id)
+
+                favoriteRef.get()
+                    .addOnSuccessListener { favoriteSnapshot ->
+                        val isFavorite = favoriteSnapshot.exists()
+
+                        body.addCampusButton(
+                            if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos"
+                        ) {
+                            if (isFavorite) {
+                                favoriteRef.delete()
+                                    .addOnSuccessListener {
+                                        Toast.makeText(
+                                            this,
+                                            "Evento removido dos favoritos.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        recreate()
+                                    }
+                                    .addOnFailureListener {
+                                        Toast.makeText(
+                                            this,
+                                            "Não foi possível remover o favorito.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                            } else {
+                                favoriteRef.set(
+                                    mapOf(
+                                        "eventId" to event.id,
+                                        "savedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                    )
+                                )
+                                    .addOnSuccessListener {
+                                        Toast.makeText(
+                                            this,
+                                            "Evento adicionado aos favoritos.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        recreate()
+                                    }
+                                    .addOnFailureListener {
+                                        Toast.makeText(
+                                            this,
+                                            "Não foi possível favoritar o evento.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                            }
+                        }
+                    }
+                    .addOnFailureListener {
+                        body.addCampusText("Não foi possível verificar seus favoritos.")
+                    }
+
                 val registration = FirebaseFirestoreProvider.db
                     .registrations(user.uid)
                     .document(event.id)

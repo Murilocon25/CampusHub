@@ -85,17 +85,19 @@ fun AppCompatActivity.buildCampusScreen(title: String): LinearLayout {
     listOf(
         getString(R.string.events_title),
         getString(R.string.my_events_title),
+        "Favoritos",
         getString(R.string.profile_title)
     ).forEachIndexed { index, label ->
         val button = Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 12f
+            textSize = 11f
         }
         button.setOnClickListener {
             val target = when (index) {
                 1 -> MyEventsActivity::class.java
-                2 -> ProfileActivity::class.java
+                2 -> MyFavoritesActivity::class.java
+                3 -> ProfileActivity::class.java
                 else -> EventsActivity::class.java
             }
             startActivity(android.content.Intent(this, target))
@@ -142,3 +144,6 @@ fun AppCompatActivity.requireUser(): Boolean = FirebaseAuth.getInstance().curren
 
 fun FirebaseFirestore.registrations(uid: String) =
     collection("users").document(uid).collection("registrations")
+
+fun FirebaseFirestore.favorites(uid: String) =
+    collection("users").document(uid).collection("favorites")
