@@ -38,6 +38,155 @@ class EventDetailActivity : AppCompatActivity(){
                 body.addCampusText(getString(R.string.event_date, event.date), 16f)
                 body.addCampusText(getString(R.string.event_place, event.place), 16f)
                 body.addCampusText(event.description, 17f)
+                body.addCampusText("Comentários", 20f, bold = true)
+
+                val commentInput = android.widget.EditText(this).apply {
+                    hint = "Escreva seu comentário"
+                    minLines = 2
+                    maxLines = 5
+                }
+                body.addView(commentInput)
+
+                val commentsRef = FirebaseFirestoreProvider.db
+                    .collection("events")
+                    .document(event.id)
+                    .collection("comments")
+
+                body.addCampusButton("Publicar comentário") {
+                    val text = commentInput.text.toString().trim()
+                    if (text.isBlank() || text.length > 1000) {
+                        commentInput.error = "Digite de 1 a 1000 caracteres."
+                        return@addCampusButton
+                    }
+
+                    FirebaseFirestoreProvider.db.collection("users")
+                        .document(user.uid)
+                        .get()
+                        .addOnSuccessListener { profile ->
+                            val authorName = profile.getString("name")
+                                ?.takeIf { it.isNotBlank() }
+                                ?: user.displayName
+                                ?: user.email
+                                ?: "Aluno"
+
+                            commentsRef.add(
+                                mapOf(
+                                    "authorUid" to user.uid,
+                                    "authorName" to authorName,
+                                    "text" to text,
+                                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                )
+                            ).addOnSuccessListener {
+                                recreate()
+                            }.addOnFailureListener {
+                                Toast.makeText(
+                                    this,
+                                    "Não foi possível publicar o comentário.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                        .addOnFailureListener {
+                            Toast.makeText(
+                                this,
+                                "Não foi possível obter seu nome de perfil.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                }
+
+                val commentsList = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+                body.addView(commentsList)
+                commentsList.addCampusText("Carregando comentários...")
+
+                commentsRef.orderBy("createdAt").get()
+                    .addOnSuccessListener { comments ->
+                        commentsList.removeAllViews()
+
+                        if (comments.isEmpty) {
+                            commentsList.addCampusText("Ainda não há comentários.")
+                            return@addOnSuccessListener
+                        }
+
+                        comments.documents.forEach { comment ->
+                            val authorName = comment.getString("authorName").orEmpty()
+                            val text = comment.getString("text").orEmpty()
+                            val publishedAt = comment.getTimestamp("createdAt")
+                                ?.toDate()
+                                ?.let { date ->
+                                    java.text.SimpleDateFormat(
+                                        "dd/MM/yyyy HH:mm",
+                                        java.util.Locale("pt", "BR")
+                                    ).format(date)
+                                } ?: "Publicando..."
+
+                            commentsList.addCampusText("$authorName · $publishedAt\n$text")
+
+                            if (comment.getString("authorUid") == user.uid) {
+                                commentsList.addCampusButton("Editar comentário") {
+                                    val editInput = android.widget.EditText(this).apply {
+                                        setText(text)
+                                    }
+
+                                    androidx.appcompat.app.AlertDialog.Builder(this)
+                                        .setTitle("Editar comentário")
+                                        .setView(editInput)
+                                        .setNegativeButton("Cancelar", null)
+                                        .setPositiveButton("Salvar") { _, _ ->
+                                            val updatedText = editInput.text.toString().trim()
+                                            if (updatedText.isBlank() || updatedText.length > 1000) {
+                                                Toast.makeText(
+                                                    this,
+                                                    "Digite de 1 a 1000 caracteres.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                comment.reference.update(
+                                                    mapOf(
+                                                        "text" to updatedText,
+                                                        "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                                    )
+                                                ).addOnSuccessListener {
+                                                    recreate()
+                                                }.addOnFailureListener {
+                                                    Toast.makeText(
+                                                        this,
+                                                        "Não foi possível editar o comentário.",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        }
+                                        .show()
+                                }
+
+                                commentsList.addCampusButton("Excluir comentário") {
+                                    androidx.appcompat.app.AlertDialog.Builder(this)
+                                        .setMessage("Deseja excluir este comentário?")
+                                        .setNegativeButton("Cancelar", null)
+                                        .setPositiveButton("Excluir") { _, _ ->
+                                            comment.reference.delete()
+                                                .addOnSuccessListener { recreate() }
+                                                .addOnFailureListener {
+                                                    Toast.makeText(
+                                                        this,
+                                                        "Não foi possível excluir o comentário.",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                        }
+                                        .show()
+                                }
+                            }
+                        }
+                    }
+                    .addOnFailureListener {
+                        commentsList.removeAllViews()
+                        commentsList.addCampusText("Não foi possível carregar os comentários.")
+                    }
 
                 val favoriteRef = FirebaseFirestoreProvider.db
                     .favorites(user.uid)
