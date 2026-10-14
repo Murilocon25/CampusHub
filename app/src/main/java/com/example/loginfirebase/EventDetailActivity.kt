@@ -38,6 +38,45 @@ class EventDetailActivity : AppCompatActivity(){
                 body.addCampusText(getString(R.string.event_date, event.date), 16f)
                 body.addCampusText(getString(R.string.event_place, event.place), 16f)
                 body.addCampusText(event.description, 17f)
+
+                val ratingsRef = FirebaseFirestoreProvider.db
+                    .collection("events")
+                    .document(event.id)
+                    .collection("ratings")
+
+                val ratingSummary = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+                body.addView(ratingSummary)
+                ratingSummary.addCampusText("Carregando avaliações...")
+
+                ratingsRef.get()
+                    .addOnSuccessListener { ratings ->
+                        ratingSummary.removeAllViews()
+
+                        val scores = ratings.documents.mapNotNull { rating ->
+                            rating.getLong("score")
+                        }
+
+                        if (scores.isEmpty()) {
+                            ratingSummary.addCampusText("Ainda não há avaliações.")
+                        } else {
+                            val average = scores.average()
+                            val formattedAverage = String.format(
+                                java.util.Locale("pt", "BR"),
+                                "%.1f",
+                                average
+                            )
+                            ratingSummary.addCampusText(
+                                "Média: $formattedAverage / 5 · ${scores.size} avaliações"
+                            )
+                        }
+                    }
+                    .addOnFailureListener {
+                        ratingSummary.removeAllViews()
+                        ratingSummary.addCampusText("Não foi possível carregar as avaliações.")
+                    }
+
                 body.addCampusText("Comentários", 20f, bold = true)
 
                 val commentInput = android.widget.EditText(this).apply {
@@ -251,6 +290,39 @@ class EventDetailActivity : AppCompatActivity(){
                 registration.get()
                     .addOnSuccessListener { snapshot ->
                         val enrolled = snapshot.exists()
+                        if (enrolled && event.hasEnded()) {
+                            val ratingRef = ratingsRef.document(user.uid)
+                            body.addCampusText("Sua avaliação", 20f, bold = true)
+                            val ratingInput = android.widget.EditText(this).apply {
+                                hint = "Digite uma nota de 1 a 5"
+                                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                            }
+                            body.addView(ratingInput)
+                            ratingRef.get().addOnSuccessListener { savedRating ->
+                                savedRating.getLong("score")?.let {
+                                    ratingInput.setText(it.toString())
+                                }
+                            }
+                            body.addCampusButton("Salvar avaliação") {
+                                val score = ratingInput.text.toString().toIntOrNull()
+                                if (score == null || score !in 1..5) {
+                                    ratingInput.error = "Informe uma nota entre 1 e 5."
+                                    return@addCampusButton
+                                }
+                                ratingRef.set(
+                                    mapOf(
+                                        "userId" to user.uid,
+                                        "score" to score,
+                                        "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                    )
+                                ).addOnSuccessListener {
+                                    Toast.makeText(this, "Avaliação salva.", Toast.LENGTH_SHORT).show()
+                                    recreate()
+                                }.addOnFailureListener {
+                                    Toast.makeText(this, "Não foi possível salvar a avaliação.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                         val buttonText = if (enrolled) {
                             getString(R.string.registration_cancel)
                         } else {

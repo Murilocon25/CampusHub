@@ -56,8 +56,9 @@ class RegisterActivity : AppCompatActivity() {
                         if (usuario == null) return@addOnCompleteListener
 
                         val dadosUsuario = hashMapOf(
-                            "email" to usuario.email,
-                            "createdAt" to System.currentTimeMillis()
+                            "name" to usuario.displayName.orEmpty(),
+                            "course" to "",
+                            "campus" to ""
                         )
 
                         FirebaseFirestore.getInstance()

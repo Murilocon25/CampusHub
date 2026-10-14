@@ -25,7 +25,7 @@ class EventsActivity : AppCompatActivity() {
 
         val searchInput = EditText(this).apply {
             hint = "Buscar evento pelo título"
-            singleLine = true
+            setSingleLine(true)
         }
         body.addView(searchInput)
 
