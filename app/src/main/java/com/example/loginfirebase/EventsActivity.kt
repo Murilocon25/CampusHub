@@ -18,9 +18,8 @@ class EventsActivity : AppCompatActivity() {
         val root = buildCampusScreen(getString(R.string.events_title))
         val body = root.tag as LinearLayout
         body.addCampusText(getString(R.string.events_intro), 15f)
-        body.addCampusButton(getString(R.string.logout)) {
-            FirebaseAuth.getInstance().signOut()
-            startActivity(Intent(this, LoginActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)); finish()
+        body.addCampusButton("Meu perfil") {
+            startActivity(Intent(this, ProfileActivity::class.java))
         }
 
         val searchInput = EditText(this).apply {
