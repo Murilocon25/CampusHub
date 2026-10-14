@@ -1,16 +1,22 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Tema base do app, usando as mesmas cores já aplicadas nas telas -->
-    <style name="Theme.LoginFirebase" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Cor principal (mesma cor de fundo dos campos de texto) -->
-        <item name="colorPrimary">@color/login_field_bg</item>
-        <item name="colorPrimaryVariant">@color/login_field_bg</item>
+    <!-- Tema minimalista: fundo claro, texto escuro e um único acento (preto) -->
+    <style name="Theme.LoginFirebase" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/text_title</item>
+        <item name="colorPrimaryVariant">@color/black</item>
         <item name="colorOnPrimary">@color/white</item>
-        <!-- Cor secundária (mesma cor do botão de entrar) -->
-        <item name="colorSecondary">@color/login_button</item>
-        <item name="colorSecondaryVariant">@color/login_button</item>
-        <item name="colorOnSecondary">@color/text_title</item>
-        <!-- Barra de status combinando com o restante do app -->
-        <item name="android:statusBarColor">@color/login_field_bg</item>
+        <item name="colorSecondary">@color/text_title</item>
+        <item name="colorSecondaryVariant">@color/black</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <item name="colorControlNormal">@color/text_hint</item>
+        <item name="colorControlActivated">@color/text_title</item>
+
+        <item name="android:textColorPrimary">@color/text_title</item>
+        <item name="android:textColorSecondary">@color/text_subtitle</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+
+        <item name="android:statusBarColor">@color/screen_background</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowBackground">@color/screen_background</item>
     </style>
 </resources>

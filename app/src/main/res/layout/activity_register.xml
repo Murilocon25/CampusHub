@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/screen_background"
@@ -10,13 +9,13 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:gravity="center"
-        android:padding="24dp">
+        android:gravity="center_vertical"
+        android:padding="32dp">
 
         <ImageView
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            android:layout_marginBottom="16dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginBottom="24dp"
             android:contentDescription="@string/app_name"
             android:src="@drawable/ic_lock_circle" />
 
@@ -24,10 +23,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/register_title"
-            android:textSize="26sp"
-            android:textStyle="bold"
+            android:textSize="28sp"
+            android:fontFamily="sans-serif-medium"
             android:textColor="@color/text_title"
-            android:layout_marginBottom="4dp" />
+            android:layout_marginBottom="6dp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -35,82 +34,72 @@
             android:text="@string/register_subtitle"
             android:textSize="15sp"
             android:textColor="@color/text_subtitle"
-            android:layout_marginBottom="28dp" />
+            android:layout_marginBottom="36dp" />
 
-        <com.google.android.material.card.MaterialCardView
+        <EditText
+            android:id="@+id/editEmailCadastro"
             android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/edittext_background"
+            android:hint="@string/hint_email"
+            android:textColor="@color/text_title"
+            android:textColorHint="@color/text_hint"
+            android:textSize="15sp"
+            android:inputType="textEmailAddress"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:layout_marginBottom="12dp"
+            android:autofillHints="emailAddress" />
+
+        <EditText
+            android:id="@+id/editSenhaCadastro"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/edittext_background"
+            android:hint="@string/hint_senha"
+            android:textColor="@color/text_title"
+            android:textColorHint="@color/text_hint"
+            android:textSize="15sp"
+            android:inputType="textPassword"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:layout_marginBottom="12dp"
+            android:autofillHints="password" />
+
+        <EditText
+            android:id="@+id/editConfirmarSenha"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/edittext_background"
+            android:hint="@string/hint_confirmar_senha"
+            android:textColor="@color/text_title"
+            android:textColorHint="@color/text_hint"
+            android:textSize="15sp"
+            android:inputType="textPassword"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:layout_marginBottom="24dp" />
+
+        <Button
+            android:id="@+id/btnCadastrar"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/button_login_background"
+            android:text="@string/btn_cadastrar"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            android:fontFamily="sans-serif-medium"
+            android:textAllCaps="false"
+            android:elevation="0dp"
+            android:stateListAnimator="@null" />
+
+        <ProgressBar
+            android:id="@+id/progressBarCadastro"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="6dp"
-            app:cardBackgroundColor="@color/white">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="24dp">
-
-                <EditText
-                    android:id="@+id/editEmailCadastro"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/edittext_background"
-                    android:hint="@string/hint_email"
-                    android:textColor="@color/white"
-                    android:textColorHint="@color/hint_on_purple"
-                    android:inputType="textEmailAddress"
-                    android:padding="14dp"
-                    android:layout_marginBottom="14dp"
-                    android:autofillHints="emailAddress" />
-
-                <EditText
-                    android:id="@+id/editSenhaCadastro"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/edittext_background"
-                    android:hint="@string/hint_senha"
-                    android:textColor="@color/white"
-                    android:textColorHint="@color/hint_on_purple"
-                    android:inputType="textPassword"
-                    android:padding="14dp"
-                    android:layout_marginBottom="14dp"
-                    android:autofillHints="password" />
-
-                <EditText
-                    android:id="@+id/editConfirmarSenha"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/edittext_background"
-                    android:hint="@string/hint_confirmar_senha"
-                    android:textColor="@color/white"
-                    android:textColorHint="@color/hint_on_purple"
-                    android:inputType="textPassword"
-                    android:padding="14dp"
-                    android:layout_marginBottom="20dp" />
-
-                <Button
-                    android:id="@+id/btnCadastrar"
-                    android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:background="@drawable/button_login_background"
-                    android:text="@string/btn_cadastrar"
-                    android:textColor="@color/text_title"
-                    android:textStyle="bold"
-                    android:textAllCaps="false"
-                    android:elevation="0dp"
-                    android:stateListAnimator="@null" />
-
-                <ProgressBar
-                    android:id="@+id/progressBarCadastro"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:layout_gravity="center"
-                    android:visibility="gone" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
+            android:layout_marginTop="16dp"
+            android:layout_gravity="center"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/txtVoltarLogin"
@@ -120,7 +109,8 @@
             android:textSize="14sp"
             android:textColor="@color/text_subtitle"
             android:padding="8dp"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="24dp"
+            android:layout_gravity="center_horizontal"
             android:clickable="true"
             android:focusable="true" />
 
