@@ -9,6 +9,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class RegisterActivity : AppCompatActivity() {
 
@@ -51,8 +52,33 @@ class RegisterActivity : AppCompatActivity() {
                     btnCadastrar.isEnabled = true
 
                     if (task.isSuccessful) {
-                        Toast.makeText(this, getString(R.string.register_success), Toast.LENGTH_SHORT).show()
-                        finish() // volta para a tela de login
+                        val usuario = task.result?.user
+                        if (usuario == null) return@addOnCompleteListener
+
+                        val dadosUsuario = hashMapOf(
+                            "email" to usuario.email,
+                            "createdAt" to System.currentTimeMillis()
+                        )
+
+                        FirebaseFirestore.getInstance()
+                            .collection("users")
+                            .document(usuario.uid)
+                            .set(dadosUsuario)
+                            .addOnSuccessListener {
+                                Toast.makeText(
+                                    this,
+                                    getString(R.string.register_success),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                finish()
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(
+                                    this,
+                                    getString(R.string.profile_save_error),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                     } else {
                         Toast.makeText(
                             this,

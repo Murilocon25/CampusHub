@@ -11,17 +11,37 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.Timestamp
 
 
-data class CampusEvent(val id: String, val title: String, val date: String, val place: String, val description: String)
+data class CampusEvent(
+    val id: String,
+    val title: String,
+    val date: String,
+    val place: String,
+    val description: String,
+    val category: String = "",
+    val endAt: Timestamp? = null
+)
+{
+    fun hasEnded(): Boolean{
+
+        return endAt !=null &&
+                endAt.toDate().time <= System.currentTimeMillis()
+    }
+
+}
 
 fun DocumentSnapshot.toCampusEvent() = CampusEvent(
     id = id,
     title = getString("title").orEmpty(),
     date = getString("date").orEmpty(),
     place = getString("place").orEmpty(),
-    description = getString("description").orEmpty()
+    description = getString("description").orEmpty(),
+    category = getString("category").orEmpty(),
+    endAt = getTimestamp("endAt")
 )
+
 
 object CampusData {
     val events = listOf(
