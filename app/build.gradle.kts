@@ -36,6 +36,8 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 
     // Firebase (BoM controla as versões compatíveis entre si)
     implementation(platform(libs.firebase.bom))

@@ -1,22 +1,71 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Tema minimalista: fundo claro, texto escuro e um único acento (preto) -->
-    <style name="Theme.LoginFirebase" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="colorPrimary">@color/text_title</item>
-        <item name="colorPrimaryVariant">@color/black</item>
-        <item name="colorOnPrimary">@color/white</item>
-        <item name="colorSecondary">@color/text_title</item>
-        <item name="colorSecondaryVariant">@color/black</item>
-        <item name="colorOnSecondary">@color/white</item>
-
-        <item name="colorControlNormal">@color/text_hint</item>
-        <item name="colorControlActivated">@color/text_title</item>
-
-        <item name="android:textColorPrimary">@color/text_title</item>
-        <item name="android:textColorSecondary">@color/text_subtitle</item>
-        <item name="android:textColorHint">@color/text_hint</item>
-
-        <item name="android:statusBarColor">@color/screen_background</item>
+<resources>
+    <style name="Theme.CampusHub" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/color_primary</item>
+        <item name="colorPrimaryVariant">@color/color_primary_dark</item>
+        <item name="colorOnPrimary">@color/color_surface</item>
+        <item name="colorSecondary">@color/color_primary</item>
+        <item name="colorSecondaryVariant">@color/color_primary_dark</item>
+        <item name="colorOnSecondary">@color/color_surface</item>
+        <item name="colorSurface">@color/color_surface</item>
+        <item name="colorOnSurface">@color/color_text_title</item>
+        <item name="android:colorBackground">@color/color_background</item>
+        <item name="colorControlNormal">@color/color_text_hint</item>
+        <item name="colorControlActivated">@color/color_primary</item>
+        <item name="android:colorAccent">@color/color_primary</item>
+        <item name="android:textColorPrimary">@color/color_text_title</item>
+        <item name="android:textColorSecondary">@color/color_text_subtitle</item>
+        <item name="android:textColorHint">@color/color_text_hint</item>
+        <item name="android:statusBarColor">@color/color_background</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowBackground">@color/screen_background</item>
+        <item name="android:windowBackground">@color/color_background</item>
+        <item name="materialButtonStyle">@style/Widget.CampusHub.Button</item>
+        <item name="textInputStyle">@style/Widget.CampusHub.EditText</item>
+    </style>
+
+    <style name="Widget.CampusHub.Button" parent="Widget.MaterialComponents.Button">
+        <item name="backgroundTint">@color/color_primary_dark</item>
+        <item name="android:textColor">@color/color_surface</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="cornerRadius">12dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="Widget.CampusHub.Button.Outlined" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="strokeColor">@color/color_primary</item>
+        <item name="android:textColor">@color/color_blue_text</item>
+        <item name="cornerRadius">12dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="Widget.CampusHub.EditText" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="boxStrokeColor">@color/color_primary</item>
+        <item name="boxBackgroundColor">@color/color_surface</item>
+        <item name="hintTextColor">@color/color_text_hint</item>
+        <item name="boxCornerRadiusTopStart">10dp</item>
+        <item name="boxCornerRadiusTopEnd">10dp</item>
+        <item name="boxCornerRadiusBottomStart">10dp</item>
+        <item name="boxCornerRadiusBottomEnd">10dp</item>
+    </style>
+
+    <style name="TextAppearance.CampusHub.Title" parent="TextAppearance.MaterialComponents.Headline6">
+        <item name="android:textColor">@color/color_text_title</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="TextAppearance.CampusHub.Body" parent="TextAppearance.MaterialComponents.Body1">
+        <item name="android:textColor">@color/color_text_body</item>
+    </style>
+    <style name="TextAppearance.CampusHub.Caption" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textColor">@color/color_text_subtitle</item>
+    </style>
+
+    <style name="Widget.CampusHub.Card" parent="Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/color_surface</item>
+        <item name="strokeColor">@color/color_border</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="cardCornerRadius">16dp</item>
+        <item name="cardElevation">2dp</item>
     </style>
 </resources>
