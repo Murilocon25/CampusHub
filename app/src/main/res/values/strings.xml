@@ -52,6 +52,32 @@
     <string name="not_informed">Não informado</string>
     <string name="event_date_label">Data e horário</string>
     <string name="event_place_label">Local</string>
+    <string name="create_event_button">Criar evento</string>
+    <string name="create_event_dialog_title">Novo evento</string>
+    <string name="create_event_title_hint">Título</string>
+    <string name="create_event_category_hint">Categoria</string>
+    <string name="create_event_date_hint">Data</string>
+    <string name="create_event_time_hint">Horário</string>
+    <string name="create_event_place_hint">Local em Santiago, RS</string>
+    <string name="create_event_description_hint">Descrição</string>
+    <string name="create_event_date_required">Selecione a data do evento.</string>
+    <string name="create_event_time_required">Selecione o horário do evento.</string>
+    <string name="create_event_title_invalid">Use um título com pelo menos 3 caracteres.</string>
+    <string name="create_event_required_fields">Preencha título, categoria, local e descrição.</string>
+    <string name="create_event_saving">Publicando evento...</string>
+    <string name="create_event_success">Evento criado com sucesso.</string>
+    <string name="create_event_error">Não foi possível criar o evento. Verifique a conexão e as regras do Firestore.</string>
+    <string name="create_event_pick_date">Escolher data</string>
+    <string name="create_event_pick_time">Escolher horário</string>
+    <string-array name="uri_santiago_places">
+        <item>Campus URI Santiago — Santiago, RS</item>
+        <item>Auditório da URI Santiago</item>
+        <item>Biblioteca Central Perseverando Bochi</item>
+        <item>Salas de aula da URI Santiago</item>
+        <item>Laboratórios da URI Santiago</item>
+        <item>Centro de Estágios e Práticas Profissionais</item>
+        <item>Espaços de convivência da URI Santiago</item>
+    </string-array>
     <string name="events_no_results">Nenhum evento encontrado</string>
     <string name="events_filter_empty">Nenhum evento corresponde à busca e aos filtros. Tente mudar os critérios.</string>
     <string name="events_load_error_short">Não foi possível carregar os eventos</string>
@@ -85,6 +111,7 @@
     <string name="my_events_load_error">Não foi possível carregar suas inscrições. Verifique a conexão e as regras do Firestore.</string>
 
     <string name="event_details_title">Detalhes do evento</string>
+    <string name="back_to_events">Voltar para eventos</string>
     <string name="event_details_loading">Carregando detalhes do evento...</string>
     <string name="event_ratings_loading">Carregando avaliações...</string>
     <string name="event_ratings_empty">Ainda não há avaliações.</string>

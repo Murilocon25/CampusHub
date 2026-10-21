@@ -1,0 +1,86 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validEvent(data) {
+      return data.creatorUid == request.auth.uid
+        && data.title is string && data.title.size() >= 3 && data.title.size() <= 120
+        && data.date is string && data.date.size() >= 10 && data.date.size() <= 40
+        && data.place is string && data.place.size() >= 2 && data.place.size() <= 200
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 2000
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
+        && data.startAt is timestamp;
+    }
+
+    match /events/{eventId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && validEvent(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if owns(resource.data.creatorUid)
+        && validEvent(request.resource.data)
+        && request.resource.data.creatorUid == resource.data.creatorUid
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if owns(resource.data.creatorUid);
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if owns(resource.data.authorUid)
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if owns(resource.data.authorUid);
+      }
+
+      match /ratings/{uid} {
+        allow read: if signedIn();
+        allow create, update: if owns(uid)
+          && request.resource.data.userId == uid
+          && request.resource.data.score is int
+          && request.resource.data.score >= 1
+          && request.resource.data.score <= 5
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if owns(uid);
+      }
+    }
+
+    match /users/{uid} {
+      allow read, create, update: if owns(uid);
+      allow delete: if false;
+
+      match /favorites/{eventId} {
+        allow read, delete: if owns(uid);
+        allow create, update: if owns(uid)
+          && request.resource.data.eventId == eventId
+          && request.resource.data.savedAt == request.time;
+      }
+
+      match /registrations/{eventId} {
+        allow read, delete: if owns(uid);
+        allow create, update: if owns(uid)
+          && request.resource.data.eventId == eventId
+          && request.resource.data.eventTitle is string
+          && request.resource.data.eventTitle.size() <= 120
+          && request.resource.data.registeredAt == request.time;
+      }
+    }
+  }
+}

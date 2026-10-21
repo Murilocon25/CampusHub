@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/navigation_events" android:icon="@drawable/ic_nav_events" android:title="@string/events_tab" />
+    <item android:id="@+id/navigation_my_events" android:icon="@drawable/ic_nav_my_events" android:title="@string/my_events_tab" />
+    <item android:id="@+id/navigation_favorites" android:icon="@drawable/ic_nav_favorites" android:title="@string/favorites_tab" />
+    <item android:id="@+id/navigation_profile" android:icon="@drawable/ic_nav_profile" android:title="@string/profile_title" />
+</menu>
