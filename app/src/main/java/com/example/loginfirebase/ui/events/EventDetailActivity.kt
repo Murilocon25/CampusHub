@@ -1,14 +1,24 @@
 package com.example.loginfirebase.ui.events
 
 import android.content.Intent
+import android.content.ClipData
+import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.RatingBar
+import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.loginfirebase.MainActivity
@@ -17,6 +27,7 @@ import com.example.loginfirebase.data.model.CampusEvent
 import com.example.loginfirebase.data.model.toEventComment
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventRepository
+import com.example.loginfirebase.data.repository.EventPhotoStore
 import com.example.loginfirebase.ui.auth.LoginActivity
 import com.example.loginfirebase.ui.common.CampusMapView
 import com.example.loginfirebase.ui.common.addCampusButton
@@ -27,7 +38,9 @@ import com.google.android.material.button.MaterialButton
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
+import java.io.File
 import java.util.Locale
+import java.util.concurrent.Executors
 
 class EventDetailActivity : AppCompatActivity() {
     companion object { const val EXTRA_EVENT_ID = "event_id" }
@@ -38,6 +51,30 @@ class EventDetailActivity : AppCompatActivity() {
     private var eventId: String = ""
     private var mapView: CampusMapView? = null
     private var savedMapState: Bundle? = null
+    private var eventPhotosAdapter: EventPhotoAdapter? = null
+    private var eventPhotosRecycler: RecyclerView? = null
+    private var eventPhotosEmptyMessage: TextView? = null
+    private var pendingCameraPhoto: File? = null
+    private val photoIoExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val galleryPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) saveEventPhoto { EventPhotoStore.saveFromUri(this, eventId, uri) }
+    }
+    private val cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val photo = pendingCameraPhoto
+        pendingCameraPhoto = null
+        if (result.resultCode == RESULT_OK && photo != null && photo.length() > 0L) {
+            saveEventPhoto {
+                try {
+                    EventPhotoStore.copyCapturedPhoto(this, eventId, photo)
+                } finally {
+                    photo.delete()
+                }
+            }
+        } else {
+            photo?.delete()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +130,7 @@ class EventDetailActivity : AppCompatActivity() {
             }
         }
         body.addCampusText(event.description, 17f)
+        addEventPhotosSection(event.id)
 
         val ratingSummary = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(ratingSummary)
@@ -257,6 +295,121 @@ class EventDetailActivity : AppCompatActivity() {
             .addOnFailureListener { showMessage(R.string.registration_check_error) }
 
         body.addCampusButton(getString(R.string.back_to_events), ::returnToEvents)
+    }
+
+    private fun addEventPhotosSection(eventId: String) {
+        body.addCampusText(getString(R.string.event_photos_title), 20f, bold = true)
+        body.addCampusText(getString(R.string.event_photos_local_notice), 13f)
+
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val cameraButton = MaterialButton(this).apply {
+            setText(R.string.event_photo_take)
+            isAllCaps = false
+            minHeight = dp(48)
+            insetTop = 0
+            insetBottom = 0
+            setOnClickListener { launchCameraForEventPhoto() }
+        }
+        val galleryButton = MaterialButton(this).apply {
+            setText(R.string.event_photo_choose)
+            isAllCaps = false
+            minHeight = dp(48)
+            insetTop = 0
+            insetBottom = 0
+            setOnClickListener { galleryPicker.launch("image/*") }
+        }
+        actions.addView(cameraButton, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginEnd = dp(6)
+        })
+        actions.addView(galleryButton, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginStart = dp(6)
+        })
+        body.addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(4)
+            bottomMargin = dp(8)
+        })
+
+        eventPhotosEmptyMessage = TextView(this).apply {
+            setText(R.string.event_photos_empty)
+            textSize = 14f
+            setTextColor(getColor(R.color.color_text_body))
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+        }
+        body.addView(eventPhotosEmptyMessage)
+
+        eventPhotosAdapter = EventPhotoAdapter()
+        eventPhotosRecycler = RecyclerView(this).apply {
+            layoutManager = GridLayoutManager(this@EventDetailActivity, 3)
+            adapter = eventPhotosAdapter
+            isNestedScrollingEnabled = false
+        }
+        body.addView(eventPhotosRecycler, LinearLayout.LayoutParams(-1, -2))
+        refreshEventPhotos(eventId)
+    }
+
+    private fun launchCameraForEventPhoto() {
+        val captureDirectory = File(cacheDir, "event_photo_capture")
+        if (!captureDirectory.exists() && !captureDirectory.mkdirs()) {
+            showMessage(R.string.event_photo_camera_unavailable)
+            return
+        }
+
+        val photo = try {
+            File.createTempFile("event_photo_", ".jpg", captureDirectory)
+        } catch (_: Exception) {
+            showMessage(R.string.event_photo_camera_unavailable)
+            return
+        }
+        pendingCameraPhoto = photo
+        try {
+            val photoUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", photo)
+            val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+                clipData = ClipData.newUri(contentResolver, getString(R.string.event_photos_title), photoUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            cameraLauncher.launch(cameraIntent)
+        } catch (_: Exception) {
+            pendingCameraPhoto = null
+            photo.delete()
+            showMessage(R.string.event_photo_camera_unavailable)
+        }
+    }
+
+    private fun saveEventPhoto(save: () -> File) {
+        photoIoExecutor.execute {
+            try {
+                save()
+                mainHandler.post {
+                    if (!isFinishing && !isDestroyed) {
+                        refreshEventPhotos(eventId)
+                        showMessage(R.string.event_photo_saved)
+                    }
+                }
+            } catch (_: Exception) {
+                mainHandler.post {
+                    if (!isFinishing && !isDestroyed) showMessage(R.string.event_photo_save_error)
+                }
+            }
+        }
+    }
+
+    private fun refreshEventPhotos(eventId: String) {
+        photoIoExecutor.execute {
+            val photos = EventPhotoStore.list(this, eventId)
+            mainHandler.post {
+                if (!isFinishing && !isDestroyed) {
+                    eventPhotosAdapter?.submitPhotos(photos)
+                    eventPhotosEmptyMessage?.isVisible = photos.isEmpty()
+                    eventPhotosRecycler?.isVisible = photos.isNotEmpty()
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        photoIoExecutor.shutdown()
+        super.onDestroy()
     }
 
     private fun returnToEvents() {

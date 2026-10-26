@@ -82,6 +82,15 @@
     <string name="event_location_confirm">Confirmar localização</string>
     <string name="event_location_marker_title">Local do evento</string>
     <string name="event_location_map_title">Localização no mapa</string>
+    <string name="event_photos_title">Fotos do evento</string>
+    <string name="event_photos_local_notice">As fotos ficam salvas somente neste dispositivo.</string>
+    <string name="event_photos_empty">Nenhuma foto adicionada ainda.</string>
+    <string name="event_photo_take">Tirar foto</string>
+    <string name="event_photo_choose">Escolher da galeria</string>
+    <string name="event_photo_saved">Foto adicionada à página deste evento neste dispositivo.</string>
+    <string name="event_photo_save_error">Não foi possível salvar a foto.</string>
+    <string name="event_photo_camera_unavailable">Não foi possível abrir a câmera neste dispositivo.</string>
+    <string name="event_photo_content_description">Foto publicada neste evento</string>
     <string name="events_no_results">Nenhum evento encontrado</string>
     <string name="events_filter_empty">Nenhum evento corresponde à busca e aos filtros. Tente mudar os critérios.</string>
     <string name="events_load_error_short">Não foi possível carregar os eventos</string>
