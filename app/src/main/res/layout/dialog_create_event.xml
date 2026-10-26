@@ -82,17 +82,39 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:hint="@string/create_event_place_hint"
+            android:hint="@string/create_event_address_hint"
             app:boxBackgroundMode="outline"
-            app:endIconMode="dropdown_menu">
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                android:id="@+id/create_event_place"
+            app:helperText="@string/create_event_address_helper">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/create_event_address"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textCapSentences"
+                android:gravity="top"
+                android:inputType="textCapSentences|textPostalAddress|textMultiLine"
                 android:maxLength="200"
-                android:minHeight="52dp" />
+                android:minLines="2"
+                android:maxLines="3" />
         </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/create_event_select_location"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/create_event_select_location"
+            android:textAllCaps="false" />
+
+        <TextView
+            android:id="@+id/create_event_location_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="4dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="4dp"
+            android:text="@string/create_event_location_required"
+            android:textColor="@color/color_text_body"
+            android:textSize="13sp" />
 
         <com.google.android.material.textfield.TextInputLayout
             style="@style/Widget.CampusHub.EditText"

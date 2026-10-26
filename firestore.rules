@@ -17,7 +17,8 @@ service cloud.firestore {
         && data.place is string && data.place.size() >= 2 && data.place.size() <= 200
         && data.description is string && data.description.size() >= 1 && data.description.size() <= 2000
         && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
-        && data.startAt is timestamp;
+        && data.startAt is timestamp
+        && data.location is latlng;
     }
 
     match /events/{eventId} {

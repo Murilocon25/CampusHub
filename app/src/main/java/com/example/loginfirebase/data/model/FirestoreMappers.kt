@@ -11,7 +11,8 @@ fun DocumentSnapshot.toCampusEvent() = CampusEvent(
     category = getString("category").orEmpty(),
     startAt = getTimestamp("startAt"),
     endAt = getTimestamp("endAt"),
-    creatorUid = getString("creatorUid").orEmpty()
+    creatorUid = getString("creatorUid").orEmpty(),
+    location = getGeoPoint("location")
 )
 
 fun DocumentSnapshot.toEventComment() = EventComment(

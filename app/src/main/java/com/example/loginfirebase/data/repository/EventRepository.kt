@@ -7,6 +7,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FieldPath
+import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.Timestamp
@@ -26,7 +27,8 @@ class EventRepository {
         description: String,
         category: String,
         startAt: Timestamp,
-        creatorUid: String
+        creatorUid: String,
+        location: GeoPoint
     ): Task<DocumentReference> = db.collection("events").add(mapOf(
         "title" to title,
         "date" to date,
@@ -35,6 +37,7 @@ class EventRepository {
         "category" to category,
         "startAt" to startAt,
         "creatorUid" to creatorUid,
+        "location" to location,
         "createdAt" to FieldValue.serverTimestamp()
     ))
 

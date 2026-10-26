@@ -18,11 +18,15 @@ import com.example.loginfirebase.data.model.toEventComment
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventRepository
 import com.example.loginfirebase.ui.auth.LoginActivity
+import com.example.loginfirebase.ui.common.CampusMapView
 import com.example.loginfirebase.ui.common.addCampusButton
 import com.example.loginfirebase.ui.common.addCampusText
 import com.example.loginfirebase.ui.common.createCampusInput
 import com.example.loginfirebase.ui.common.showCampusState
 import com.google.android.material.button.MaterialButton
+import org.maplibre.android.annotations.MarkerOptions
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.geometry.LatLng
 import java.util.Locale
 
 class EventDetailActivity : AppCompatActivity() {
@@ -32,9 +36,12 @@ class EventDetailActivity : AppCompatActivity() {
     private val eventRepository = EventRepository()
     private lateinit var body: LinearLayout
     private var eventId: String = ""
+    private var mapView: CampusMapView? = null
+    private var savedMapState: Bundle? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedMapState = savedInstanceState
         val user = authRepository.currentUser
         if (user == null) {
             startActivity(Intent(this, LoginActivity::class.java))
@@ -69,6 +76,22 @@ class EventDetailActivity : AppCompatActivity() {
         body.addCampusText(event.title, 23f, bold = true)
         body.addCampusText(getString(R.string.event_date, event.displayDate()), 16f)
         body.addCampusText(getString(R.string.event_place, event.place.ifBlank { getString(R.string.not_informed) }), 16f)
+        event.location?.let { location ->
+            body.addCampusText(getString(R.string.event_location_map_title), 19f, bold = true)
+            mapView = CampusMapView(this, lifecycle, savedMapState)
+            body.addView(mapView, LinearLayout.LayoutParams(-1, dp(230)).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(8)
+            })
+            mapView?.getMapAsync { map ->
+                val eventPosition = LatLng(location.latitude, location.longitude)
+                map.cameraPosition = CameraPosition.Builder()
+                    .target(eventPosition)
+                    .zoom(16.0)
+                    .build()
+                map.addMarker(MarkerOptions().position(eventPosition).title(event.title).snippet(event.place))
+            }
+        }
         body.addCampusText(event.description, 17f)
 
         val ratingSummary = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -294,6 +317,16 @@ class EventDetailActivity : AppCompatActivity() {
 
     private fun showMessage(stringId: Int) {
         Toast.makeText(this, getString(stringId), Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        mapView?.saveMapState(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        mapView?.onLowMemory()
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

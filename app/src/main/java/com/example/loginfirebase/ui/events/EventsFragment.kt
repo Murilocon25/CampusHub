@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.core.view.isVisible
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -22,6 +23,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.GeoPoint
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -36,6 +38,18 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
     private lateinit var status: MaterialAutoCompleteTextView
     private var allEvents: List<CampusEvent> = emptyList()
     private val eventRepository = EventRepository()
+    private var onLocationPicked: ((GeoPoint) -> Unit)? = null
+    private val locationPickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val data = result.data
+            val latitude = data?.getDoubleExtra(EventLocationPickerActivity.EXTRA_LATITUDE, Double.NaN) ?: Double.NaN
+            val longitude = data?.getDoubleExtra(EventLocationPickerActivity.EXTRA_LONGITUDE, Double.NaN) ?: Double.NaN
+            if (latitude.isFinite() && longitude.isFinite()) {
+                onLocationPicked?.invoke(GeoPoint(latitude, longitude))
+            }
+        }
+        onLocationPicked = null
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -136,10 +150,25 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
         val categoryInput = form.findViewById<TextInputEditText>(R.id.create_event_category)
         val dateInput = form.findViewById<TextInputEditText>(R.id.create_event_date)
         val timeInput = form.findViewById<TextInputEditText>(R.id.create_event_time)
-        val placeInput = form.findViewById<MaterialAutoCompleteTextView>(R.id.create_event_place)
+        val addressInput = form.findViewById<TextInputEditText>(R.id.create_event_address)
         val descriptionInput = form.findViewById<TextInputEditText>(R.id.create_event_description)
-        val locations = resources.getStringArray(R.array.uri_santiago_places)
-        placeInput.setAdapter(ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, locations))
+        val locationButton = form.findViewById<MaterialButton>(R.id.create_event_select_location)
+        val locationStatus = form.findViewById<android.widget.TextView>(R.id.create_event_location_status)
+        var eventLocation: GeoPoint? = null
+
+        locationButton.setOnClickListener {
+            onLocationPicked = { location ->
+                eventLocation = location
+                locationStatus.setText(R.string.create_event_location_selected)
+                locationStatus.setTextColor(requireContext().getColor(R.color.color_primary_dark))
+            }
+            val pickerIntent = Intent(requireContext(), EventLocationPickerActivity::class.java)
+            eventLocation?.let { currentLocation ->
+                pickerIntent.putExtra(EventLocationPickerActivity.EXTRA_LATITUDE, currentLocation.latitude)
+                pickerIntent.putExtra(EventLocationPickerActivity.EXTRA_LONGITUDE, currentLocation.longitude)
+            }
+            locationPickerLauncher.launch(pickerIntent)
+        }
 
         val eventDateTime = Calendar.getInstance()
         var dateSelected = false
@@ -191,19 +220,25 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
             saveButton.setOnClickListener {
                 val title = titleInput.text?.toString()?.trim().orEmpty()
                 val eventCategory = categoryInput.text?.toString()?.trim().orEmpty()
-                val place = placeInput.text?.toString()?.trim().orEmpty()
+                val address = addressInput.text?.toString()?.trim().orEmpty()
                 val description = descriptionInput.text?.toString()?.trim().orEmpty()
 
                 titleInput.error = if (title.length < 3) getString(R.string.create_event_title_invalid) else null
                 categoryInput.error = if (eventCategory.isBlank()) getString(R.string.create_event_required_fields) else null
-                placeInput.error = if (place.isBlank()) getString(R.string.create_event_required_fields) else null
+                addressInput.error = if (address.length < 5) getString(R.string.create_event_address_required) else null
                 descriptionInput.error = if (description.isBlank()) getString(R.string.create_event_required_fields) else null
                 dateInput.error = if (!dateSelected) getString(R.string.create_event_date_required) else null
                 timeInput.error = if (!timeSelected) getString(R.string.create_event_time_required) else null
+                if (eventLocation == null) {
+                    locationStatus.setText(R.string.create_event_location_required)
+                    locationStatus.setTextColor(requireContext().getColor(android.R.color.holo_red_dark))
+                }
 
-                if (title.length !in 3..120 || eventCategory.isBlank() || place.length !in 2..200 || description.isBlank() ||
-                    !dateSelected || !timeSelected
+                if (title.length !in 3..120 || eventCategory.isBlank() || address.length !in 5..200 || description.isBlank() ||
+                    !dateSelected || !timeSelected || eventLocation == null
                 ) return@setOnClickListener
+
+                val location = eventLocation ?: return@setOnClickListener
 
                 val startTime = Timestamp(Date(eventDateTime.timeInMillis))
                 val legacyDate = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", ptBrLocale).format(eventDateTime.time)
@@ -213,11 +248,12 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
                 eventRepository.createEvent(
                     title = title,
                     date = legacyDate,
-                    place = place,
+                    place = address,
                     description = description,
                     category = eventCategory,
                     startAt = startTime,
-                    creatorUid = user.uid
+                    creatorUid = user.uid,
+                    location = location
                 ).addOnSuccessListener {
                     if (!isAdded) return@addOnSuccessListener
                     dialog.dismiss()
