@@ -34,9 +34,12 @@ import com.example.loginfirebase.data.model.CampusEvent
 import com.example.loginfirebase.data.model.toEventComment
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventRepository
-import com.example.loginfirebase.data.repository.EventPhotoStore
-import com.example.loginfirebase.data.repository.EventAudio
-import com.example.loginfirebase.data.repository.EventAudioStore
+import com.example.loginfirebase.data.repository.EventMedia
+import com.example.loginfirebase.data.repository.EventMediaStore
+import com.example.loginfirebase.data.repository.EventMediaType
+import com.example.loginfirebase.data.repository.EventVideoInput
+import com.example.loginfirebase.data.repository.EventVideoInputException
+import com.example.loginfirebase.data.repository.PendingEventVideo
 import com.example.loginfirebase.ui.auth.LoginActivity
 import com.example.loginfirebase.ui.common.CampusMapView
 import com.example.loginfirebase.ui.common.addCampusButton
@@ -49,6 +52,7 @@ import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,6 +62,8 @@ class EventDetailActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_EVENT_ID = "event_id"
         private const val MAX_AUDIO_DURATION_MS = 60_000
+        private const val MAX_VIDEO_DURATION_SECONDS = 60
+        private const val STATE_PENDING_VIDEO_CAPTURE = "pending_video_capture"
     }
 
     private val authRepository = AuthRepository()
@@ -80,24 +86,59 @@ class EventDetailActivity : AppCompatActivity() {
     private var currentlyPlayingAudioId: String? = null
     private var audioOwnerUid = ""
     private var audioEventId = ""
-    private val photoIoExecutor = Executors.newSingleThreadExecutor()
+    private var mediaAuthorName = ""
+    private var mediaOwnerUid = ""
+    private val deletingMediaIds = mutableSetOf<String>()
+    private var pendingVideoCapture: File? = null
+    private var videoRecordButton: MaterialButton? = null
+    private var videoChooseButton: MaterialButton? = null
+    private var eventVideosStatus: TextView? = null
+    private var eventVideosRecycler: RecyclerView? = null
+    private var eventVideosAdapter: EventVideoAdapter? = null
+    private var isVideoInputBusy = false
+    private var videoOwnerUid = ""
+    private val videoIoExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val galleryPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) saveEventPhoto { EventPhotoStore.saveFromUri(this, eventId, uri) }
+        if (uri != null) publishEventPhoto(uri)
     }
     private val cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val photo = pendingCameraPhoto
         pendingCameraPhoto = null
         if (result.resultCode == RESULT_OK && photo != null && photo.length() > 0L) {
-            saveEventPhoto {
-                try {
-                    EventPhotoStore.copyCapturedPhoto(this, eventId, photo)
-                } finally {
-                    photo.delete()
-                }
-            }
+            publishCapturedEventPhoto(photo)
         } else {
             photo?.delete()
+        }
+    }
+    private val videoPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) {
+            finishVideoInput()
+        } else {
+            prepareEventVideo { EventVideoInput.copyFromUri(this, eventId, uri) }
+        }
+    }
+    private val videoCaptureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val capture = pendingVideoCapture
+        pendingVideoCapture = null
+        if (result.resultCode != RESULT_OK) {
+            capture?.delete()
+            finishVideoInput()
+            return@registerForActivityResult
+        }
+
+        if (capture != null && capture.isFile && capture.length() > 0L) {
+            prepareEventVideo { EventVideoInput.validateCaptureFile(this, eventId, capture) }
+        } else {
+            capture?.delete()
+            val returnedUri = result.data?.data
+                ?: result.data?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+            if (returnedUri != null) {
+                prepareEventVideo { EventVideoInput.copyFromUri(this, eventId, returnedUri) }
+            } else {
+                finishVideoInput()
+                showMessage(R.string.event_video_capture_error)
+            }
         }
     }
     private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -119,6 +160,11 @@ class EventDetailActivity : AppCompatActivity() {
             finish()
             return
         }
+        pendingVideoCapture = savedInstanceState
+            ?.getString(STATE_PENDING_VIDEO_CAPTURE)
+            ?.let(::File)
+            ?.takeIf(File::isFile)
+        isVideoInputBusy = pendingVideoCapture != null
 
         setContentView(R.layout.activity_event_detail)
         body = findViewById(R.id.event_detail_content)
@@ -139,6 +185,13 @@ class EventDetailActivity : AppCompatActivity() {
 
     private fun renderEvent(event: CampusEvent, userId: String, displayName: String?, email: String?) {
         body.removeAllViews()
+        mediaOwnerUid = userId
+        mediaAuthorName = displayName?.trim()?.takeIf(String::isNotBlank)
+            ?: email?.substringBefore('@')?.takeIf(String::isNotBlank)
+            ?: getString(R.string.profile_student_fallback)
+        eventRepository.getProfile(userId).addOnSuccessListener { profile ->
+            profile.getString("name")?.trim()?.takeIf(String::isNotBlank)?.let { mediaAuthorName = it }
+        }
         val overview = createDetailCard()
         val badges = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         badges.addView(createBadge(
@@ -191,7 +244,8 @@ class EventDetailActivity : AppCompatActivity() {
                 map.addMarker(MarkerOptions().position(eventPosition).title(event.title).snippet(event.place))
             }
         }
-        addEventPhotosSection(event.id)
+        addEventPhotosSection(event.id, userId)
+        addEventVideosSection(event.id, userId)
         addEventAudiosSection(event.id, userId)
 
         val ratingSummary = createDetailCard(getString(R.string.event_ratings_title))
@@ -363,9 +417,9 @@ class EventDetailActivity : AppCompatActivity() {
         body.addCampusButton(getString(R.string.back_to_events), ::returnToEvents)
     }
 
-    private fun addEventPhotosSection(eventId: String) {
+    private fun addEventPhotosSection(eventId: String, userId: String) {
         val section = createDetailCard(getString(R.string.event_photos_title))
-        section.addView(createSectionNote(getString(R.string.event_photos_local_notice)))
+        section.addView(createSectionNote(getString(R.string.event_photos_shared_notice)))
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -410,7 +464,7 @@ class EventDetailActivity : AppCompatActivity() {
         }
         section.addView(eventPhotosEmptyMessage)
 
-        eventPhotosAdapter = EventPhotoAdapter()
+        eventPhotosAdapter = EventPhotoAdapter(userId, ::confirmDeleteMedia)
         eventPhotosRecycler = RecyclerView(this).apply {
             layoutManager = GridLayoutManager(this@EventDetailActivity, 3)
             adapter = eventPhotosAdapter
@@ -424,7 +478,7 @@ class EventDetailActivity : AppCompatActivity() {
         audioEventId = eventId
         audioOwnerUid = userId
         val section = createDetailCard(getString(R.string.event_audios_title))
-        section.addView(createSectionNote(getString(R.string.event_audios_local_notice)))
+        section.addView(createSectionNote(getString(R.string.event_audios_shared_notice)))
 
         audioRecordingHint = TextView(this).apply {
             setText(R.string.event_audio_recording_hint)
@@ -467,10 +521,187 @@ class EventDetailActivity : AppCompatActivity() {
         refreshEventAudios(eventId, userId)
     }
 
+    private fun addEventVideosSection(eventId: String, userId: String) {
+        videoOwnerUid = userId
+        val section = createDetailCard(getString(R.string.event_videos_title))
+        section.addView(createSectionNote(getString(R.string.event_videos_shared_notice)))
+
+        videoRecordButton = MaterialButton(this).apply {
+            setText(R.string.event_video_record)
+            isAllCaps = false
+            isEnabled = !isVideoInputBusy
+            minHeight = dp(48)
+            insetTop = 0
+            insetBottom = 0
+            setOnClickListener { launchVideoCapture(eventId) }
+        }
+        section.addView(videoRecordButton, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(4)
+            bottomMargin = dp(8)
+        })
+
+        videoChooseButton = MaterialButton(this).apply {
+            setText(R.string.event_video_choose)
+            isAllCaps = false
+            isEnabled = !isVideoInputBusy
+            minHeight = dp(48)
+            insetTop = 0
+            insetBottom = 0
+            setOnClickListener { launchVideoPicker() }
+        }
+        section.addView(videoChooseButton, LinearLayout.LayoutParams(-1, -2))
+
+        eventVideosStatus = TextView(this).apply {
+            setText(R.string.event_videos_loading)
+            textSize = 14f
+            setTextColor(getColor(R.color.color_text_body))
+            setPadding(dp(4), dp(12), dp(4), dp(6))
+        }
+        section.addView(eventVideosStatus)
+
+        eventVideosAdapter = EventVideoAdapter(
+            currentUserUid = userId,
+            onWatch = ::openEventVideo,
+            onDelete = ::confirmDeleteMedia
+        )
+        eventVideosRecycler = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@EventDetailActivity)
+            adapter = eventVideosAdapter
+            isNestedScrollingEnabled = false
+            isVisible = false
+        }
+        section.addView(eventVideosRecycler, LinearLayout.LayoutParams(-1, -2))
+        refreshEventVideos(eventId)
+    }
+
+    private fun refreshEventVideos(eventId: String) {
+        if (eventVideosAdapter?.itemCount == 0) {
+            eventVideosStatus?.setText(R.string.event_videos_loading)
+            eventVideosStatus?.isVisible = true
+            eventVideosRecycler?.isVisible = false
+        }
+        EventMediaStore.list(eventId, EventMediaType.VIDEO) { result ->
+            if (isFinishing || isDestroyed) return@list
+            val status = eventVideosStatus ?: return@list
+            val recycler = eventVideosRecycler ?: return@list
+            result.onSuccess { videos ->
+                eventVideosAdapter?.submitVideos(videos)
+                status.isVisible = videos.isEmpty()
+                status.setText(if (videos.isEmpty()) R.string.event_videos_empty else R.string.event_videos_loading)
+                recycler.isVisible = videos.isNotEmpty()
+            }.onFailure {
+                eventVideosAdapter?.submitVideos(emptyList())
+                status.setText(R.string.event_media_load_error)
+                status.isVisible = true
+                recycler.isVisible = false
+            }
+        }
+    }
+
+    private fun openEventVideo(video: EventMedia) {
+        startActivity(Intent(this, EventVideoPlayerActivity::class.java).apply {
+            putExtra(EventVideoPlayerActivity.EXTRA_EVENT_ID, video.eventId)
+            putExtra(EventVideoPlayerActivity.EXTRA_VIDEO_ID, video.id)
+        })
+    }
+
+    private fun launchVideoCapture(eventId: String) {
+        if (isVideoInputBusy) return
+        setVideoInputBusy(true)
+        val capture = try {
+            EventVideoInput.createCaptureFile(this, eventId)
+        } catch (_: Exception) {
+            finishVideoInput()
+            showMessage(R.string.event_video_capture_error)
+            return
+        }
+        pendingVideoCapture = capture
+
+        try {
+            val captureUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", capture)
+            val captureIntent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, captureUri)
+                putExtra(MediaStore.EXTRA_DURATION_LIMIT, MAX_VIDEO_DURATION_SECONDS)
+                putExtra(MediaStore.EXTRA_SIZE_LIMIT, EventVideoInput.MAX_SIZE_BYTES)
+                clipData = ClipData.newUri(contentResolver, getString(R.string.event_videos_title), captureUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            videoCaptureLauncher.launch(captureIntent)
+        } catch (_: Exception) {
+            pendingVideoCapture = null
+            capture.delete()
+            finishVideoInput()
+            showMessage(R.string.event_video_capture_error)
+        }
+    }
+
+    private fun launchVideoPicker() {
+        if (isVideoInputBusy) return
+        setVideoInputBusy(true)
+        try {
+            videoPicker.launch("video/*")
+        } catch (_: Exception) {
+            finishVideoInput()
+            showMessage(R.string.event_video_picker_error)
+        }
+    }
+
+    private fun prepareEventVideo(prepare: () -> PendingEventVideo) {
+        setVideoInputBusy(true)
+        videoIoExecutor.execute {
+            val result = runCatching(prepare)
+            mainHandler.post {
+                if (isFinishing || isDestroyed) {
+                    result.getOrNull()?.let(EventVideoInput::delete)
+                    return@post
+                }
+                result.onSuccess { pendingVideo ->
+                    EventMediaStore.publishFile(
+                        context = applicationContext,
+                        eventId = pendingVideo.eventId,
+                        type = EventMediaType.VIDEO,
+                        file = pendingVideo.file,
+                        authorUid = videoOwnerUid,
+                        authorName = mediaAuthorName,
+                        mimeType = pendingVideo.mimeType,
+                        durationMs = pendingVideo.durationMs
+                    ) { uploadResult ->
+                        EventVideoInput.delete(pendingVideo)
+                        if (isFinishing || isDestroyed) return@publishFile
+                        setVideoInputBusy(false)
+                        handleMediaPublished(EventMediaType.VIDEO, uploadResult)
+                    }
+                }.onFailure { error ->
+                    setVideoInputBusy(false)
+                    showMessage(videoInputErrorMessage(error))
+                }
+            }
+        }
+    }
+
+    private fun videoInputErrorMessage(error: Throwable): Int =
+        when ((error as? EventVideoInputException)?.reason) {
+            EventVideoInputException.Reason.TOO_LARGE -> R.string.event_video_too_large
+            EventVideoInputException.Reason.TOO_LONG -> R.string.event_video_too_long
+            EventVideoInputException.Reason.INVALID_VIDEO -> R.string.event_video_invalid
+            EventVideoInputException.Reason.UNREADABLE -> R.string.event_video_input_error
+            else -> R.string.event_video_save_error
+        }
+
+    private fun setVideoInputBusy(busy: Boolean) {
+        isVideoInputBusy = busy
+        videoRecordButton?.isEnabled = !busy
+        videoChooseButton?.isEnabled = !busy
+    }
+
+    private fun finishVideoInput() {
+        setVideoInputBusy(false)
+    }
+
     private fun beginAudioRecording() {
         if (audioRecorder != null) return
         val destination = try {
-            EventAudioStore.createRecordingFile(this, audioEventId)
+            createPendingAudioRecordingFile(audioEventId)
         } catch (_: Exception) {
             showMessage(R.string.event_audio_record_error)
             return
@@ -501,6 +732,16 @@ class EventDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun createPendingAudioRecordingFile(eventId: String): File {
+        val safeEventId = eventId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+            .ifBlank { "event" }
+        val directory = File(File(cacheDir, "event_audio_pending"), safeEventId)
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw IOException("Cannot create the temporary event audio directory")
+        }
+        return File.createTempFile("recording_", ".m4a", directory)
+    }
+
     private fun stopAndPublishAudio() {
         val recorder = audioRecorder ?: return
         audioRecorder = null
@@ -522,48 +763,53 @@ class EventDetailActivity : AppCompatActivity() {
             showMessage(R.string.event_audio_record_error)
             return
         }
-        try {
-            EventAudioStore.publishRecording(this, audioEventId, audioOwnerUid, recording)
-            refreshEventAudios(audioEventId, audioOwnerUid)
-            showMessage(R.string.event_audio_published)
-        } catch (_: Exception) {
+        audioRecordButton?.isEnabled = false
+        EventMediaStore.publishFile(
+            context = applicationContext,
+            eventId = audioEventId,
+            type = EventMediaType.AUDIO,
+            file = recording,
+            authorUid = audioOwnerUid,
+            authorName = mediaAuthorName,
+            mimeType = "audio/mp4"
+        ) { result ->
             recording.delete()
-            showMessage(R.string.event_audio_save_error)
+            audioRecordButton?.isEnabled = true
+            handleMediaPublished(EventMediaType.AUDIO, result)
         }
     }
 
     private fun refreshEventAudios(eventId: String, userId: String) {
-        photoIoExecutor.execute {
-            val audios = EventAudioStore.list(this, eventId)
-            mainHandler.post {
-                if (isFinishing || isDestroyed) return@post
-                val container = eventAudiosContainer ?: return@post
-                container.removeAllViews()
-                eventAudiosEmptyMessage?.isVisible = audios.isEmpty()
-                audios.forEachIndexed { index, audio ->
-                    container.addView(createAudioRow(eventId, userId, audio))
-                    if (index < audios.lastIndex) {
-                        container.addView(View(this).apply {
-                            setBackgroundColor(getColor(R.color.color_blue_surface))
-                        }, LinearLayout.LayoutParams(-1, dp(1)).apply {
-                            topMargin = dp(8)
-                            bottomMargin = dp(8)
-                        })
-                    }
+        EventMediaStore.list(eventId, EventMediaType.AUDIO) { result ->
+            if (isFinishing || isDestroyed) return@list
+            val container = eventAudiosContainer ?: return@list
+            val audios = result.getOrNull().orEmpty()
+            container.removeAllViews()
+            eventAudiosEmptyMessage?.setText(
+                if (result.isSuccess) R.string.event_audios_empty else R.string.event_media_load_error
+            )
+            eventAudiosEmptyMessage?.isVisible = audios.isEmpty()
+            audios.forEachIndexed { index, audio ->
+                container.addView(createAudioRow(eventId, userId, audio))
+                if (index < audios.lastIndex) {
+                    container.addView(View(this).apply {
+                        setBackgroundColor(getColor(R.color.color_blue_surface))
+                    }, LinearLayout.LayoutParams(-1, dp(1)).apply {
+                        topMargin = dp(8)
+                        bottomMargin = dp(8)
+                    })
                 }
             }
         }
     }
 
-    private fun createAudioRow(eventId: String, userId: String, audio: EventAudio): View {
+    private fun createAudioRow(eventId: String, userId: String, audio: EventMedia): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(4), dp(6), dp(4), dp(6))
         }
-        val authorLabel = if (audio.ownerUid == userId) R.string.event_audio_yours else R.string.event_audio_other_user
-        val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.forLanguageTag("pt-BR"))
-            .format(Date(audio.file.lastModified()))
-        row.addCampusText(getString(R.string.event_audio_item, getString(authorLabel), date), 14f)
+        val date = formatMediaDate(audio.createdAtMillis)
+        row.addCampusText(getString(R.string.event_audio_item, audio.authorName, date), 14f)
 
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val playButton = MaterialButton(this).apply {
@@ -571,19 +817,19 @@ class EventDetailActivity : AppCompatActivity() {
             minHeight = dp(44)
             insetTop = 0
             insetBottom = 0
-            setText(if (currentlyPlayingAudioId == audio.file.name) R.string.event_audio_stop else R.string.event_audio_play)
+            setText(if (currentlyPlayingAudioId == audio.id) R.string.event_audio_stop else R.string.event_audio_play)
             setOnClickListener { playOrStopAudio(eventId, userId, audio) }
         }
         actions.addView(playButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) })
 
-        if (audio.ownerUid == userId) {
+        if (EventMediaStore.isOwnedBy(audio, userId)) {
             val deleteButton = MaterialButton(this).apply {
                 isAllCaps = false
                 minHeight = dp(44)
                 insetTop = 0
                 insetBottom = 0
                 setText(R.string.event_audio_delete)
-                setOnClickListener { confirmDeleteAudio(eventId, userId, audio) }
+                setOnClickListener { confirmDeleteMedia(audio) }
             }
             actions.addView(deleteButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(6) })
         }
@@ -591,30 +837,50 @@ class EventDetailActivity : AppCompatActivity() {
         return row
     }
 
-    private fun playOrStopAudio(eventId: String, userId: String, audio: EventAudio) {
-        if (currentlyPlayingAudioId == audio.file.name) {
+    private fun playOrStopAudio(eventId: String, userId: String, audio: EventMedia) {
+        if (currentlyPlayingAudioId == audio.id) {
             stopAudioPlayback()
             return
         }
         stopAudioPlayback(refresh = false)
-        try {
-            val player = MediaPlayer.create(this, Uri.fromFile(audio.file))
-            if (player == null) {
-                showMessage(R.string.event_audio_play_error)
-                return
-            }
-            audioPlayer = player
-            currentlyPlayingAudioId = audio.file.name
-            player.setOnCompletionListener {
-                stopAudioPlayback(refresh = false)
+        val player = MediaPlayer()
+        audioPlayer = player
+        currentlyPlayingAudioId = audio.id
+        player.setOnPreparedListener {
+            if (audioPlayer === player && currentlyPlayingAudioId == audio.id) {
+                player.start()
                 refreshEventAudios(eventId, userId)
             }
-            player.start()
+        }
+        player.setOnCompletionListener {
+            stopAudioPlayback(refresh = false)
             refreshEventAudios(eventId, userId)
-        } catch (_: Exception) {
+        }
+        player.setOnErrorListener { _, _, _ ->
             stopAudioPlayback(refresh = false)
             showMessage(R.string.event_audio_play_error)
+            refreshEventAudios(eventId, userId)
+            true
         }
+        EventMediaStore.downloadUrl(audio) { result ->
+            if (audioPlayer !== player || currentlyPlayingAudioId != audio.id) return@downloadUrl
+            val uri = result.getOrNull()
+            if (uri == null) {
+                stopAudioPlayback(refresh = false)
+                showMessage(R.string.event_audio_play_error)
+                refreshEventAudios(eventId, userId)
+                return@downloadUrl
+            }
+            try {
+                player.setDataSource(this, uri)
+                player.prepareAsync()
+            } catch (_: Exception) {
+                stopAudioPlayback(refresh = false)
+                showMessage(R.string.event_audio_play_error)
+                refreshEventAudios(eventId, userId)
+            }
+        }
+        refreshEventAudios(eventId, userId)
     }
 
     private fun stopAudioPlayback(refresh: Boolean = true) {
@@ -628,21 +894,10 @@ class EventDetailActivity : AppCompatActivity() {
         if (refresh && audioEventId.isNotBlank()) refreshEventAudios(audioEventId, audioOwnerUid)
     }
 
-    private fun confirmDeleteAudio(eventId: String, userId: String, audio: EventAudio) {
-        AlertDialog.Builder(this)
-            .setMessage(getString(R.string.event_audio_delete_prompt))
-            .setNegativeButton(getString(R.string.event_cancel), null)
-            .setPositiveButton(getString(R.string.event_delete)) { _, _ ->
-                if (currentlyPlayingAudioId == audio.file.name) stopAudioPlayback(refresh = false)
-                if (EventAudioStore.delete(this, eventId, audio, userId)) {
-                    refreshEventAudios(eventId, userId)
-                    showMessage(R.string.event_audio_deleted)
-                } else {
-                    showMessage(R.string.event_audio_delete_error)
-                }
-            }
-            .show()
-    }
+    private fun formatMediaDate(timestamp: Long): String =
+        if (timestamp <= 0L) getString(R.string.event_media_date_unknown)
+        else SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.forLanguageTag("pt-BR"))
+            .format(Date(timestamp))
 
     private fun launchCameraForEventPhoto() {
         val captureDirectory = File(cacheDir, "event_photo_capture")
@@ -673,34 +928,105 @@ class EventDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveEventPhoto(save: () -> File) {
-        photoIoExecutor.execute {
-            try {
-                save()
-                mainHandler.post {
-                    if (!isFinishing && !isDestroyed) {
-                        refreshEventPhotos(eventId)
-                        showMessage(R.string.event_photo_saved)
-                    }
+    private fun publishCapturedEventPhoto(photo: File) {
+        EventMediaStore.publishFile(
+            context = applicationContext,
+            eventId = eventId,
+            type = EventMediaType.PHOTO,
+            file = photo,
+            authorUid = mediaOwnerUid,
+            authorName = mediaAuthorName,
+            mimeType = "image/jpeg"
+        ) { result ->
+            photo.delete()
+            handleMediaPublished(EventMediaType.PHOTO, result)
+        }
+    }
+
+    private fun publishEventPhoto(uri: Uri) {
+        val mimeType = contentResolver.getType(uri)
+            ?.takeIf { it.startsWith("image/", ignoreCase = true) }
+            ?: "image/jpeg"
+        EventMediaStore.publishUri(
+            context = applicationContext,
+            eventId = eventId,
+            type = EventMediaType.PHOTO,
+            uri = uri,
+            authorUid = mediaOwnerUid,
+            authorName = mediaAuthorName,
+            mimeType = mimeType
+        ) { result -> handleMediaPublished(EventMediaType.PHOTO, result) }
+    }
+
+    private fun handleMediaPublished(type: EventMediaType, result: Result<EventMedia>) {
+        if (isFinishing || isDestroyed) return
+        result.onSuccess {
+            when (type) {
+                EventMediaType.PHOTO -> {
+                    refreshEventPhotos(eventId)
+                    showMessage(R.string.event_photo_saved)
                 }
-            } catch (_: Exception) {
-                mainHandler.post {
-                    if (!isFinishing && !isDestroyed) showMessage(R.string.event_photo_save_error)
+                EventMediaType.AUDIO -> {
+                    refreshEventAudios(eventId, mediaOwnerUid)
+                    showMessage(R.string.event_audio_published)
+                }
+                EventMediaType.VIDEO -> {
+                    refreshEventVideos(eventId)
+                    showMessage(R.string.event_video_published)
                 }
             }
+        }.onFailure {
+            val message = when (type) {
+                EventMediaType.PHOTO -> R.string.event_photo_save_error
+                EventMediaType.AUDIO -> R.string.event_audio_save_error
+                EventMediaType.VIDEO -> R.string.event_video_save_error
+            }
+            showMessage(message)
         }
     }
 
     private fun refreshEventPhotos(eventId: String) {
-        photoIoExecutor.execute {
-            val photos = EventPhotoStore.list(this, eventId)
-            mainHandler.post {
-                if (!isFinishing && !isDestroyed) {
-                    eventPhotosAdapter?.submitPhotos(photos)
-                    eventPhotosEmptyMessage?.isVisible = photos.isEmpty()
-                    eventPhotosRecycler?.isVisible = photos.isNotEmpty()
-                }
+        EventMediaStore.list(eventId, EventMediaType.PHOTO) { result ->
+            if (isFinishing || isDestroyed) return@list
+            result.onSuccess { photos ->
+                eventPhotosAdapter?.submitPhotos(photos)
+                eventPhotosEmptyMessage?.isVisible = photos.isEmpty()
+                eventPhotosRecycler?.isVisible = photos.isNotEmpty()
+            }.onFailure {
+                eventPhotosAdapter?.submitPhotos(emptyList())
+                eventPhotosEmptyMessage?.setText(R.string.event_media_load_error)
+                eventPhotosEmptyMessage?.isVisible = true
+                eventPhotosRecycler?.isVisible = false
             }
+        }
+    }
+
+    private fun confirmDeleteMedia(media: EventMedia) {
+        if (!EventMediaStore.isOwnedBy(media, mediaOwnerUid) || media.id in deletingMediaIds) return
+        AlertDialog.Builder(this)
+            .setMessage(getString(R.string.event_media_delete_prompt))
+            .setNegativeButton(getString(R.string.event_cancel), null)
+            .setPositiveButton(getString(R.string.event_delete)) { _, _ -> deleteEventMedia(media) }
+            .show()
+    }
+
+    private fun deleteEventMedia(media: EventMedia) {
+        if (media.id in deletingMediaIds) return
+        deletingMediaIds += media.id
+        if (media.type == EventMediaType.AUDIO && currentlyPlayingAudioId == media.id) {
+            stopAudioPlayback(refresh = false)
+        }
+        EventMediaStore.delete(media, mediaOwnerUid) { result ->
+            deletingMediaIds -= media.id
+            if (isFinishing || isDestroyed) return@delete
+            result.onSuccess {
+                when (media.type) {
+                    EventMediaType.PHOTO -> refreshEventPhotos(media.eventId)
+                    EventMediaType.AUDIO -> refreshEventAudios(media.eventId, mediaOwnerUid)
+                    EventMediaType.VIDEO -> refreshEventVideos(media.eventId)
+                }
+                showMessage(R.string.event_media_deleted)
+            }.onFailure { showMessage(R.string.event_media_delete_error) }
         }
     }
 
@@ -716,7 +1042,9 @@ class EventDetailActivity : AppCompatActivity() {
     override fun onDestroy() {
         cancelAudioRecording()
         stopAudioPlayback(refresh = false)
-        photoIoExecutor.shutdown()
+        pendingVideoCapture?.delete()
+        pendingVideoCapture = null
+        videoIoExecutor.shutdown()
         super.onDestroy()
     }
 
@@ -856,6 +1184,7 @@ class EventDetailActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         mapView?.saveMapState(outState)
+        pendingVideoCapture?.absolutePath?.let { outState.putString(STATE_PENDING_VIDEO_CAPTURE, it) }
         super.onSaveInstanceState(outState)
     }
 

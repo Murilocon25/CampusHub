@@ -3,4 +3,7 @@
     <cache-path
         name="event_photo_captures"
         path="event_photo_capture/" />
+    <cache-path
+        name="event_video_captures"
+        path="event_video_pending/" />
 </paths>

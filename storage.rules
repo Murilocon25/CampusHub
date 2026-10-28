@@ -1,0 +1,18 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /event_media/{eventId}/{uid}/{fileName} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      allow read: if request.auth != null;
+      allow create, update: if isOwner()
+        && request.resource.size > 0
+        && request.resource.size <= 104857600
+        && request.resource.contentType.matches('(image|audio|video)/.*');
+      allow delete: if isOwner();
+    }
+  }
+}

@@ -51,6 +51,25 @@ service cloud.firestore {
         allow delete: if owns(resource.data.authorUid);
       }
 
+      match /media/{mediaId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorName is string
+          && request.resource.data.authorName.size() >= 1
+          && request.resource.data.authorName.size() <= 120
+          && request.resource.data.type in ['photo', 'audio', 'video']
+          && request.resource.data.storagePath is string
+          && request.resource.data.storagePath.matches('^event_media/[^/]+/' + request.auth.uid + '/[^/]+$')
+          && request.resource.data.mimeType is string
+          && request.resource.data.sizeBytes is int
+          && request.resource.data.sizeBytes > 0
+          && request.resource.data.durationMs is int
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if owns(resource.data.authorUid);
+      }
+
       match /ratings/{uid} {
         allow read: if signedIn();
         allow create, update: if owns(uid)

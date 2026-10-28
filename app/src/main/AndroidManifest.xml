@@ -23,7 +23,7 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/event_photo_file_paths" />
+                android:resource="@xml/event_media_file_paths" />
         </provider>
 
         <activity android:name=".ui.auth.LoginActivity" android:exported="false" />
@@ -42,6 +42,7 @@
             android:exported="false" />
 
         <activity android:name=".ui.events.EventDetailActivity" android:exported="false" />
+        <activity android:name=".ui.events.EventVideoPlayerActivity" android:exported="false" />
         <activity android:name=".ui.events.EventLocationPickerActivity" android:exported="false" />
 
     </application>
