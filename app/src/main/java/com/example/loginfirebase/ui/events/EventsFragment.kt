@@ -5,8 +5,7 @@ import android.app.TimePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.ArrayAdapter
-import android.widget.Toast
+import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
@@ -18,9 +17,14 @@ import com.example.loginfirebase.data.repository.EventRepository
 import com.example.loginfirebase.R
 import com.example.loginfirebase.data.model.CampusEvent
 import com.example.loginfirebase.ui.common.CampusStateView
+import com.example.loginfirebase.ui.common.CampusSkeletonListView
+import com.example.loginfirebase.ui.common.showCampusSnackbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.GeoPoint
@@ -33,9 +37,11 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
     private lateinit var viewModel: EventListViewModel
     private lateinit var adapter: EventAdapter
     private lateinit var stateView: CampusStateView
+    private lateinit var loadingSkeleton: CampusSkeletonListView
     private lateinit var search: TextInputEditText
-    private lateinit var category: MaterialAutoCompleteTextView
-    private lateinit var status: MaterialAutoCompleteTextView
+    private lateinit var category: ChipGroup
+    private lateinit var status: ChipGroup
+    private lateinit var createEventButton: ExtendedFloatingActionButton
     private var allEvents: List<CampusEvent> = emptyList()
     private val eventRepository = EventRepository()
     private var onLocationPicked: ((GeoPoint) -> Unit)? = null
@@ -55,27 +61,43 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
         super.onViewCreated(view, savedInstanceState)
         viewModel = ViewModelProvider(this)[EventListViewModel::class.java]
         stateView = view.findViewById(R.id.event_state)
+        loadingSkeleton = view.findViewById(R.id.event_loading_skeleton)
         search = view.findViewById(R.id.event_search)
         category = view.findViewById(R.id.category_filter)
         status = view.findViewById(R.id.status_filter)
-        view.findViewById<MaterialButton>(R.id.create_event_button).setOnClickListener {
+        val user = AuthRepository().currentUser
+        val name = user?.displayName?.trim()?.split(Regex("\\s+"))?.firstOrNull()
+            ?: user?.email?.substringBefore('@')?.takeIf(String::isNotBlank)
+        view.findViewById<TextView>(R.id.event_greeting).text = name?.let {
+            getString(R.string.event_greeting_named, it)
+        } ?: getString(R.string.event_greeting_fallback)
+        createEventButton = view.findViewById(R.id.create_event_button)
+        createEventButton.setOnClickListener {
             showCreateEventDialog()
         }
         adapter = EventAdapter(::openEvent)
         view.findViewById<RecyclerView>(R.id.event_list).apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = this@EventsFragment.adapter
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    if (dy > 0) createEventButton.shrink()
+                    else if (dy < 0) createEventButton.extend()
+                }
+            })
         }
 
         val all = getString(R.string.filter_all)
-        category.setAdapter(ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, listOf(all)))
-        category.setText(all, false)
-        status.setAdapter(ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, listOf(
+        populateFilterChips(category, listOf(all), all)
+        populateFilterChips(status, listOf(
             all, getString(R.string.event_status_upcoming_filter), getString(R.string.event_status_ended_filter)
-        )))
-        status.setText(all, false)
-        category.setOnItemClickListener { _, _, _, _ -> renderEvents() }
-        status.setOnItemClickListener { _, _, _, _ -> renderEvents() }
+        ), all)
+        category.setOnCheckedStateChangeListener { group, checkedIds ->
+            if (checkedIds.isNotEmpty()) renderEvents()
+        }
+        status.setOnCheckedStateChangeListener { group, checkedIds ->
+            if (checkedIds.isNotEmpty()) renderEvents()
+        }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = renderEvents()
@@ -91,23 +113,33 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
         when (state) {
             EventListState.Loading -> {
                 recycler.isVisible = false
-                stateView.showMessage(getString(R.string.events_loading))
+                stateView.hideMessage()
+                loadingSkeleton.isVisible = true
             }
             EventListState.Empty -> {
+                loadingSkeleton.isVisible = false
                 recycler.isVisible = false
-                stateView.showMessage(getString(R.string.events_empty))
+                stateView.showMessage(getString(R.string.events_empty), getString(R.string.state_create_first_event)) {
+                    createEventButton.performClick()
+                }
             }
             is EventListState.Error -> {
+                loadingSkeleton.isVisible = false
                 recycler.isVisible = false
-                stateView.showMessage(getString(R.string.events_load_error))
+                stateView.showMessage(getString(R.string.events_load_error), getString(R.string.state_retry)) {
+                    viewModel.loadEvents()
+                }
             }
             is EventListState.Success -> {
+                loadingSkeleton.isVisible = false
                 allEvents = state.events
                 recycler.isVisible = true
                 stateView.hideMessage()
-                val categories = listOf(getString(R.string.filter_all)) + state.events
+                val all = getString(R.string.filter_all)
+                val categories = listOf(all) + state.events
                     .map { it.category }.filter { it.isNotBlank() }.distinct().sorted()
-                category.setAdapter(ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, categories))
+                val previous = category.findViewById<Chip>(category.checkedChipId)?.text?.toString() ?: all
+                populateFilterChips(category, categories, previous.takeIf(categories::contains) ?: all)
                 renderEvents()
             }
         }
@@ -116,8 +148,8 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
     private fun renderEvents() {
         if (!isAdded || !::adapter.isInitialized || !::stateView.isInitialized) return
         val all = getString(R.string.filter_all)
-        val selectedCategory = category.text?.toString().orEmpty().ifBlank { all }
-        val selectedStatus = status.text?.toString().orEmpty().ifBlank { all }
+        val selectedCategory = category.findViewById<Chip>(category.checkedChipId)?.text?.toString() ?: all
+        val selectedStatus = status.findViewById<Chip>(status.checkedChipId)?.text?.toString() ?: all
         val filtered = allEvents.filter { event ->
             val matchesText = event.title.contains(search.text?.toString().orEmpty().trim(), ignoreCase = true)
             val matchesCategory = selectedCategory == all || selectedCategory == event.category
@@ -129,8 +161,34 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
             matchesText && matchesCategory && matchesStatus
         }
         adapter.submitList(filtered)
-        if (filtered.isEmpty()) stateView.showMessage(getString(R.string.events_filter_empty))
+        if (filtered.isEmpty()) stateView.showMessage(
+            getString(R.string.events_filter_empty), getString(R.string.state_clear_filters)
+        ) {
+            search.text?.clear()
+            category.getChildAt(0)?.id?.let(category::check)
+            status.getChildAt(0)?.id?.let(status::check)
+        }
         else stateView.hideMessage()
+    }
+
+    private fun populateFilterChips(group: ChipGroup, labels: List<String>, selected: String) {
+        group.removeAllViews()
+        labels.forEach { label ->
+            val chip = Chip(requireContext()).apply {
+                id = View.generateViewId()
+                text = label
+                isCheckable = true
+                setEnsureMinTouchTargetSize(true)
+                setChipBackgroundColorResource(R.color.campus_chip_background)
+                setChipStrokeColorResource(R.color.color_border)
+                chipStrokeWidth = resources.getDimension(R.dimen.space_1)
+                chipCornerRadius = resources.getDimension(R.dimen.shape_large)
+                setTextColor(resources.getColorStateList(R.color.campus_chip_text, requireContext().theme))
+                setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+                isChecked = label == selected
+            }
+            group.addView(chip)
+        }
     }
 
     private fun openEvent(event: CampusEvent) {
@@ -141,7 +199,7 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
     private fun showCreateEventDialog() {
         val user = AuthRepository().currentUser
         if (user == null) {
-            Toast.makeText(requireContext(), getString(R.string.auth_generic_error), Toast.LENGTH_SHORT).show()
+            requireView().showCampusSnackbar(R.string.auth_generic_error)
             return
         }
 
@@ -160,7 +218,7 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
             onLocationPicked = { location ->
                 eventLocation = location
                 locationStatus.setText(R.string.create_event_location_selected)
-                locationStatus.setTextColor(requireContext().getColor(R.color.color_primary_dark))
+                    locationStatus.setTextColor(requireContext().getColor(R.color.color_success))
             }
             val pickerIntent = Intent(requireContext(), EventLocationPickerActivity::class.java)
             eventLocation?.let { currentLocation ->
@@ -208,15 +266,14 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
             ).show()
         }
 
-        val dialog = MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.create_event_dialog_title)
-            .setView(form)
-            .setNegativeButton(R.string.back_to_events, null)
-            .setPositiveButton(R.string.create_event_button, null)
-            .create()
+        val dialog = BottomSheetDialog(requireContext())
+        dialog.setContentView(form)
+        val saveButton = form.findViewById<MaterialButton>(R.id.create_event_submit)
+        form.findViewById<View>(R.id.create_event_close).setOnClickListener { dialog.dismiss() }
 
         dialog.setOnShowListener {
-            val saveButton = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+            dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+            dialog.behavior.skipCollapsed = true
             saveButton.setOnClickListener {
                 val title = titleInput.text?.toString()?.trim().orEmpty()
                 val eventCategory = categoryInput.text?.toString()?.trim().orEmpty()
@@ -231,7 +288,7 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
                 timeInput.error = if (!timeSelected) getString(R.string.create_event_time_required) else null
                 if (eventLocation == null) {
                     locationStatus.setText(R.string.create_event_location_required)
-                    locationStatus.setTextColor(requireContext().getColor(android.R.color.holo_red_dark))
+                    locationStatus.setTextColor(requireContext().getColor(R.color.color_error))
                 }
 
                 if (title.length !in 3..120 || eventCategory.isBlank() || address.length !in 5..200 || description.isBlank() ||
@@ -257,13 +314,13 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
                 ).addOnSuccessListener {
                     if (!isAdded) return@addOnSuccessListener
                     dialog.dismiss()
-                    Toast.makeText(requireContext(), getString(R.string.create_event_success), Toast.LENGTH_SHORT).show()
+                    requireView().showCampusSnackbar(R.string.create_event_success)
                     viewModel.loadEvents()
                 }.addOnFailureListener {
                     if (!isAdded) return@addOnFailureListener
                     saveButton.isEnabled = true
                     saveButton.setText(R.string.create_event_button)
-                    Toast.makeText(requireContext(), getString(R.string.create_event_error), Toast.LENGTH_LONG).show()
+                    requireView().showCampusSnackbar(R.string.create_event_error, com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
                 }
             }
         }

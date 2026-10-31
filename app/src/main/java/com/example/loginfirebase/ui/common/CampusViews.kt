@@ -16,26 +16,32 @@ fun LinearLayout.addCampusText(
 ) {
     addView(TextView(context).apply {
         this.text = text
-        textSize = size
-        setTextColor(color ?: context.getColor(R.color.color_text_body))
-        if (bold) setTypeface(null, android.graphics.Typeface.BOLD)
-        val density = resources.displayMetrics.density
-        setPadding((4 * density).toInt(), (7 * density).toInt(), (4 * density).toInt(), (7 * density).toInt())
+        setTextAppearance(when {
+            size >= 24f -> R.style.TextAppearance_CampusHub_Headline
+            size >= 19f -> R.style.TextAppearance_CampusHub_Title
+            size >= 16f -> R.style.TextAppearance_CampusHub_Body
+            size >= 14f -> R.style.TextAppearance_CampusHub_Label
+            else -> R.style.TextAppearance_CampusHub_Caption
+        })
+        setCampusFont(bold)
+        if (color != null) setTextColor(context.getColor(color))
+        val inset = resources.getDimensionPixelSize(R.dimen.space_1)
+        val vertical = resources.getDimensionPixelSize(R.dimen.space_2)
+        setPadding(inset, vertical, inset, vertical)
     })
 }
 
 fun LinearLayout.addCampusButton(label: String, action: () -> Unit) {
-    val density = resources.displayMetrics.density
     addView(MaterialButton(context).apply {
         text = label
         isAllCaps = false
-        minHeight = (48 * density).toInt()
+        minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
         insetTop = 0
         insetBottom = 0
         setOnClickListener { action() }
     }, LinearLayout.LayoutParams(-1, -2).apply {
-        topMargin = (6 * density).toInt()
-        bottomMargin = (6 * density).toInt()
+        topMargin = resources.getDimensionPixelSize(R.dimen.space_2)
+        bottomMargin = resources.getDimensionPixelSize(R.dimen.space_2)
     })
 }
 
@@ -50,20 +56,20 @@ fun AppCompatActivity.createCampusInput(
     minLines: Int = 1,
     maxLines: Int = 1
 ): Pair<TextInputLayout, TextInputEditText> {
-    val density = resources.displayMetrics.density
     val layout = TextInputLayout(this).apply {
         this.hint = hint
         boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
         setBoxBackgroundColorResource(R.color.color_surface)
         setBoxStrokeColor(getColor(R.color.color_primary))
-        setBoxCornerRadii(10f * density, 10f * density, 10f * density, 10f * density)
+        val corner = resources.getDimension(R.dimen.shape_small)
+        setBoxCornerRadii(corner, corner, corner, corner)
     }
     val editText = TextInputEditText(layout.context).apply {
         this.inputType = inputType
         this.minLines = minLines
         this.maxLines = maxLines
         isSingleLine = maxLines == 1
-        minHeight = (52 * density).toInt()
+        minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
     }
     layout.addView(editText)
     return layout to editText

@@ -1,40 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="@color/color_background"
-    android:paddingStart="16dp"
-    android:paddingTop="14dp"
-    android:paddingEnd="16dp">
-    <TextView
-        android:id="@+id/event_detail_header"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/event_detail_toolbar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:text="@string/event_details_title"
-        android:textAppearance="@style/TextAppearance.CampusHub.Title"
-        android:textSize="18sp" />
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:layout_marginTop="2dp"
-        android:layout_marginBottom="8dp"
-        android:text="@string/event_details_intro"
-        android:textAppearance="@style/TextAppearance.CampusHub.Caption"
-        android:textSize="13sp" />
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/color_surface"
+        android:title="@string/app_name"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:navigationIconTint="@color/color_text_title"
+        app:titleTextAppearance="@style/TextAppearance.CampusHub.Title" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:fillViewport="true">
         <LinearLayout
-            android:id="@+id/event_detail_content"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="12dp"
-            android:paddingBottom="24dp" />
+            android:paddingStart="@dimen/space_4"
+            android:paddingTop="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingBottom="@dimen/space_5">
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/detail_cover_height"
+                android:layout_marginBottom="@dimen/space_4"
+                android:background="@drawable/bg_event_cover"
+                android:clipToOutline="true">
+                <ImageView
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_event_cover" />
+            </FrameLayout>
+            <TextView
+                android:id="@+id/event_detail_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/space_3"
+                android:text="@string/event_details_intro"
+                android:textAppearance="@style/TextAppearance.CampusHub.Headline" />
+            <LinearLayout
+                android:id="@+id/event_detail_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
     </ScrollView>
+
+    <FrameLayout
+        android:id="@+id/event_detail_registration_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/color_surface"
+        android:elevation="@dimen/elevation_bar"
+        android:paddingStart="@dimen/space_4"
+        android:paddingTop="@dimen/space_2"
+        android:paddingEnd="@dimen/space_4"
+        android:paddingBottom="@dimen/space_2"
+        android:visibility="gone" />
 </LinearLayout>

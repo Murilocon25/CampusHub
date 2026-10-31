@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.loginfirebase.R
 import com.example.loginfirebase.data.repository.EventMedia
 import com.example.loginfirebase.data.repository.EventMediaStore
+import com.example.loginfirebase.ui.common.setCampusFont
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import java.io.File
@@ -36,7 +37,7 @@ class EventPhotoAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoViewHolder {
         val context = parent.context
-        val imageSize = (112 * context.resources.displayMetrics.density).toInt()
+        val imageSize = context.resources.getDimensionPixelSize(R.dimen.photo_thumbnail_size)
         val image = ImageView(context).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, imageSize)
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -45,38 +46,40 @@ class EventPhotoAdapter(
             clipToOutline = true
         }
         val author = TextView(context).apply {
-            textSize = 12f
+            setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+            setCampusFont()
             setTextColor(context.getColor(R.color.color_text_title))
             maxLines = 2
         }
         val date = TextView(context).apply {
-            textSize = 11f
+            setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+            setCampusFont()
             setTextColor(context.getColor(R.color.color_text_subtitle))
             maxLines = 1
         }
         val delete = MaterialButton(context).apply {
             setText(R.string.event_photo_delete)
             isAllCaps = false
-            minHeight = (36 * context.resources.displayMetrics.density).toInt()
+            minHeight = context.resources.getDimensionPixelSize(R.dimen.touch_target_min)
             insetTop = 0
             insetBottom = 0
         }
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 4), dp(context, 4), dp(context, 4), dp(context, 4))
+            setPadding(context.resources.getDimensionPixelSize(R.dimen.space_1), context.resources.getDimensionPixelSize(R.dimen.space_1), context.resources.getDimensionPixelSize(R.dimen.space_1), context.resources.getDimensionPixelSize(R.dimen.space_1))
             addView(image)
-            addView(author, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(context, 4) })
-            addView(date, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(context, 2) })
-            addView(delete, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(context, 2) })
+            addView(author, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.resources.getDimensionPixelSize(R.dimen.space_1) })
+            addView(date, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.resources.getDimensionPixelSize(R.dimen.space_1) })
+            addView(delete, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.resources.getDimensionPixelSize(R.dimen.space_1) })
         }
         val card = MaterialCardView(context).apply {
-            radius = dp(context, 10).toFloat()
+            radius = context.resources.getDimension(R.dimen.shape_small)
             cardElevation = 0f
-            strokeWidth = dp(context, 1)
+            strokeWidth = context.resources.getDimensionPixelSize(R.dimen.stroke_width)
             strokeColor = context.getColor(R.color.color_border)
             setCardBackgroundColor(context.getColor(R.color.color_surface))
             addView(content)
-            layoutParams = RecyclerView.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 8) }
+            layoutParams = RecyclerView.LayoutParams(-1, -2).apply { bottomMargin = context.resources.getDimensionPixelSize(R.dimen.space_2) }
         }
         return PhotoViewHolder(card, image, author, date, delete)
     }
@@ -112,7 +115,7 @@ class EventPhotoAdapter(
                 return@downloadToFile
             }
             decoder.execute {
-                val bitmap = decodeThumbnail(thumbnailFile, dp(context, 224))
+                val bitmap = decodeThumbnail(thumbnailFile, context.resources.getDimensionPixelSize(R.dimen.photo_decode_target))
                 thumbnailFile.delete()
                 if (bitmap != null) {
                     thumbnailCache.put(photo.id, bitmap)
@@ -140,8 +143,6 @@ class EventPhotoAdapter(
         val deleteButton: MaterialButton
     ) : RecyclerView.ViewHolder(itemView)
 
-    private fun dp(context: android.content.Context, value: Int): Int =
-        (value * context.resources.displayMetrics.density).toInt()
 
     companion object {
         private val thumbnailCache = object : LruCache<String, Bitmap>(12 * 1024) {

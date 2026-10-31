@@ -21,6 +21,44 @@ service cloud.firestore {
         && data.location is latlng;
     }
 
+    function validMedia(eventId, data) {
+      return request.auth != null
+        && data.keys().hasAll([
+          'type', 'authorUid', 'authorName', 'createdAt',
+          'storagePath', 'mimeType', 'sizeBytes', 'durationMs'
+        ])
+        && data.keys().hasOnly([
+          'type', 'authorUid', 'authorName', 'createdAt',
+          'storagePath', 'mimeType', 'sizeBytes', 'durationMs'
+        ])
+        && data.authorUid == request.auth.uid
+        && data.authorName is string
+        && data.authorName.size() >= 1
+        && data.authorName.size() <= 120
+        && data.type in ['photo', 'audio', 'video']
+        && data.storagePath is string
+        && data.storagePath.matches(
+          '^event_media/' + eventId + '/' + request.auth.uid + '/[^/]+$'
+        )
+        && data.mimeType is string
+        && data.sizeBytes is int
+        && data.sizeBytes > 0
+        && data.sizeBytes <= 104857600
+        && data.durationMs is int
+        && data.durationMs >= 0
+        && data.durationMs <= 60000
+        && data.createdAt == request.time
+        && (
+          (data.type == 'photo'
+            && data.mimeType.lower().matches('image/.*')
+            && data.durationMs == 0)
+          || (data.type == 'audio'
+            && data.mimeType.lower().matches('audio/.*'))
+          || (data.type == 'video'
+            && data.mimeType.lower().matches('video/.*'))
+        );
+    }
+
     match /events/{eventId} {
       allow read: if signedIn();
       allow create: if signedIn()
@@ -53,19 +91,7 @@ service cloud.firestore {
 
       match /media/{mediaId} {
         allow read: if signedIn();
-        allow create: if signedIn()
-          && request.resource.data.authorUid == request.auth.uid
-          && request.resource.data.authorName is string
-          && request.resource.data.authorName.size() >= 1
-          && request.resource.data.authorName.size() <= 120
-          && request.resource.data.type in ['photo', 'audio', 'video']
-          && request.resource.data.storagePath is string
-          && request.resource.data.storagePath.matches('^event_media/[^/]+/' + request.auth.uid + '/[^/]+$')
-          && request.resource.data.mimeType is string
-          && request.resource.data.sizeBytes is int
-          && request.resource.data.sizeBytes > 0
-          && request.resource.data.durationMs is int
-          && request.resource.data.createdAt == request.time;
+        allow create: if signedIn() && validMedia(eventId, request.resource.data);
         allow update: if false;
         allow delete: if owns(resource.data.authorUid);
       }

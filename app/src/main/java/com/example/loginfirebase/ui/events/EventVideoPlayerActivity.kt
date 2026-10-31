@@ -5,8 +5,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.widget.ProgressBar
-import android.widget.Toast
 import android.widget.VideoView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import com.example.loginfirebase.R
@@ -14,6 +14,7 @@ import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventMediaStore
 import com.example.loginfirebase.data.repository.EventMediaType
 import com.example.loginfirebase.ui.auth.LoginActivity
+import com.example.loginfirebase.ui.common.showCampusSnackbar
 import com.google.android.material.appbar.MaterialToolbar
 
 class EventVideoPlayerActivity : AppCompatActivity() {

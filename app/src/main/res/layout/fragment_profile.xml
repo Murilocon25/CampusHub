@@ -3,81 +3,165 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/color_background"
     android:fillViewport="true">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:padding="@dimen/space_4">
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/profile_title"
-            android:textAppearance="@style/TextAppearance.CampusHub.Title"
-            android:textSize="24sp" />
-        <TextView
-            android:id="@+id/profile_email"
+            android:textAppearance="@style/TextAppearance.CampusHub.Headline" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.CampusHub.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:layout_marginBottom="18dp"
-            android:textAppearance="@style/TextAppearance.CampusHub.Caption" />
+            android:layout_marginTop="@dimen/space_3"
+            android:layout_marginBottom="@dimen/space_3"
+            app:shapeAppearance="@style/ShapeAppearance.CampusHub.Large">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="@dimen/space_4">
+                <TextView
+                    android:id="@+id/profile_avatar"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="@drawable/bg_avatar"
+                    android:contentDescription="@string/profile_avatar_accessibility"
+                    android:gravity="center"
+                    android:textAppearance="@style/TextAppearance.CampusHub.Title"
+                    android:textColor="@color/color_on_primary_container" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/space_3"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:id="@+id/profile_display_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:maxLines="2"
+                        android:textAppearance="@style/TextAppearance.CampusHub.Title" />
+                    <TextView
+                        android:id="@+id/profile_email"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_1"
+                        android:textAppearance="@style/TextAppearance.CampusHub.Caption" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/profile_badges"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/space_3"
+            app:chipSpacingHorizontal="@dimen/space_2"
+            app:chipSpacingVertical="@dimen/space_1">
+            <com.google.android.material.chip.Chip
+                android:id="@+id/profile_course_badge"
+                style="@style/Widget.CampusHub.Chip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checkable="false"
+                android:visibility="gone" />
+            <com.google.android.material.chip.Chip
+                android:id="@+id/profile_campus_badge"
+                style="@style/Widget.CampusHub.Chip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checkable="false"
+                android:visibility="gone" />
+        </com.google.android.material.chip.ChipGroup>
+
         <com.example.loginfirebase.ui.common.CampusStateView
             android:id="@+id/profile_state"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="@dimen/space_3"
             android:importantForAccessibility="yes"
             android:visibility="gone" />
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.CampusHub.EditText"
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.CampusHub.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/profile_name_hint"
-            android:layout_marginBottom="10dp"
-            app:boxBackgroundMode="outline">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/profile_name"
+            app:shapeAppearance="@style/ShapeAppearance.CampusHub.Large">
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textPersonName" />
-        </com.google.android.material.textfield.TextInputLayout>
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.CampusHub.EditText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/profile_course_hint"
-            android:layout_marginBottom="10dp"
-            app:boxBackgroundMode="outline">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/profile_course"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-        </com.google.android.material.textfield.TextInputLayout>
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.CampusHub.EditText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/profile_campus_hint"
-            android:layout_marginBottom="16dp"
-            app:boxBackgroundMode="outline">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/profile_campus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-        </com.google.android.material.textfield.TextInputLayout>
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/profile_save"
-            style="@style/Widget.CampusHub.Button"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/profile_save" />
+                android:orientation="vertical"
+                android:padding="@dimen/space_4">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/space_3"
+                    android:text="@string/profile_edit_section"
+                    android:textAppearance="@style/TextAppearance.CampusHub.Title" />
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.CampusHub.EditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/space_3"
+                    android:hint="@string/profile_name_hint"
+                    app:boxBackgroundMode="outline">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/profile_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textPersonName" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.CampusHub.EditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/space_3"
+                    android:hint="@string/profile_course_hint"
+                    app:boxBackgroundMode="outline">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/profile_course"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.CampusHub.EditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/space_4"
+                    android:hint="@string/profile_campus_hint"
+                    app:boxBackgroundMode="outline">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/profile_campus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/profile_save"
+                    style="@style/Widget.CampusHub.Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/profile_save" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/profile_sign_out"
-            style="@style/Widget.CampusHub.Button.Outlined"
+            style="@style/Widget.CampusHub.Button.Text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/btn_sair" />
+            android:layout_marginTop="@dimen/space_2"
+            android:text="@string/btn_sair"
+            android:textColor="@color/color_error" />
     </LinearLayout>
 </ScrollView>

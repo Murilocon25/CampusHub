@@ -13,6 +13,8 @@ import com.example.loginfirebase.R
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.UserRepository
 import com.example.loginfirebase.util.firebaseErrorMessage
+import com.example.loginfirebase.ui.common.showCampusSnackbar
+import com.google.android.material.snackbar.Snackbar
 
 class RegisterActivity : AppCompatActivity() {
 
@@ -36,7 +38,7 @@ class RegisterActivity : AppCompatActivity() {
             val confirmarTexto = confirmarSenha.text.toString().trim()
 
             if (emailTexto.isEmpty() || senhaTexto.isEmpty() || confirmarTexto.isEmpty()) {
-                Toast.makeText(this, getString(R.string.erro_campos_vazios), Toast.LENGTH_SHORT).show()
+                findViewById<View>(android.R.id.content).showCampusSnackbar(R.string.erro_campos_vazios)
                 return@setOnClickListener
             }
 
@@ -66,32 +68,24 @@ class RegisterActivity : AppCompatActivity() {
                     if (task.isSuccessful) {
                         val usuario = task.result?.user
                         if (usuario == null) {
-                            Toast.makeText(this, getString(R.string.register_user_missing), Toast.LENGTH_LONG).show()
+                            findViewById<View>(android.R.id.content).showCampusSnackbar(R.string.register_user_missing, Snackbar.LENGTH_LONG)
                             return@addOnCompleteListener
                         }
 
                         userRepository.createEmptyProfile(usuario.uid) { profileResult ->
                             if (profileResult.isSuccess) {
-                                Toast.makeText(
-                                    this,
-                                    getString(R.string.register_success),
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                Toast.makeText(this, getString(R.string.register_success), Toast.LENGTH_SHORT).show()
                                 finish()
                             } else {
-                                Toast.makeText(
-                                    this,
-                                    getString(R.string.profile_save_error),
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                findViewById<View>(android.R.id.content).showCampusSnackbar(
+                                    R.string.profile_save_error, Snackbar.LENGTH_LONG
+                                )
                             }
                         }
                     } else {
-                        Toast.makeText(
-                            this,
-                            firebaseErrorMessage(task.exception),
-                            Toast.LENGTH_LONG
-                        ).show()
+                        findViewById<View>(android.R.id.content).showCampusSnackbar(
+                            firebaseErrorMessage(task.exception), Snackbar.LENGTH_LONG
+                        )
                     }
                 }
         }

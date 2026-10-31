@@ -34,6 +34,13 @@ data class EventMedia(
     val sizeBytes: Long = 0L
 )
 
+class EventMediaPublishException internal constructor(
+    val stage: Stage,
+    cause: Exception
+) : Exception(cause.message, cause) {
+    enum class Stage { STORAGE_UPLOAD, FIRESTORE_METADATA }
+}
+
 /** Stores shared event media in Firebase Storage and its public metadata in Firestore. */
 object EventMediaStore {
     private val db get() = FirebaseFirestoreProvider.db
@@ -119,7 +126,12 @@ object EventMediaStore {
         val mediaId = UUID.randomUUID().toString()
         val extension = extensionFor(resolvedMime)
         val storagePath = "event_media/$eventId/$uid/$mediaId.$extension"
-        val storageReference = storage.reference.child(storagePath)
+        val storageReference = try {
+            storage.reference.child(storagePath)
+        } catch (error: Exception) {
+            onResult(Result.failure(EventMediaPublishException(EventMediaPublishException.Stage.STORAGE_UPLOAD, error)))
+            return
+        }
         val metadata = StorageMetadata.Builder().setContentType(resolvedMime).build()
         val media = EventMedia(
             id = mediaId,
@@ -133,19 +145,43 @@ object EventMediaStore {
             durationMs = durationMs
         )
 
-        storageReference.putFile(uri, metadata)
+        val uploadTask = try {
+            storageReference.putFile(uri, metadata)
+        } catch (error: Exception) {
+            onResult(Result.failure(EventMediaPublishException(EventMediaPublishException.Stage.STORAGE_UPLOAD, error)))
+            return
+        }
+        uploadTask
             .addOnSuccessListener { upload ->
                 val savedMedia = media.copy(sizeBytes = upload.metadata?.sizeBytes ?: 0L)
-                eventMediaCollection(eventId).document(mediaId)
-                    .set(toDocument(savedMedia))
+                val metadataTask = try {
+                    eventMediaCollection(eventId).document(mediaId).set(toDocument(savedMedia))
+                } catch (writeError: Exception) {
+                    storageReference.delete().addOnCompleteListener {
+                        onResult(Result.failure(EventMediaPublishException(
+                            EventMediaPublishException.Stage.FIRESTORE_METADATA,
+                            writeError
+                        )))
+                    }
+                    return@addOnSuccessListener
+                }
+                metadataTask
                     .addOnSuccessListener { onResult(Result.success(savedMedia)) }
                     .addOnFailureListener { writeError ->
                         storageReference.delete().addOnCompleteListener {
-                            onResult(Result.failure(writeError))
+                            onResult(Result.failure(EventMediaPublishException(
+                                EventMediaPublishException.Stage.FIRESTORE_METADATA,
+                                writeError
+                            )))
                         }
                     }
             }
-            .addOnFailureListener { onResult(Result.failure(it)) }
+            .addOnFailureListener {
+                onResult(Result.failure(EventMediaPublishException(
+                    EventMediaPublishException.Stage.STORAGE_UPLOAD,
+                    it
+                )))
+            }
     }
 
     fun downloadUrl(media: EventMedia, onResult: (Result<Uri>) -> Unit) {

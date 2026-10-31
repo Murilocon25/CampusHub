@@ -8,13 +8,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Log
 import android.content.pm.PackageManager
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.RatingBar
 import android.widget.TextView
 import android.widget.Toast
@@ -35,6 +36,7 @@ import com.example.loginfirebase.data.model.toEventComment
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventRepository
 import com.example.loginfirebase.data.repository.EventMedia
+import com.example.loginfirebase.data.repository.EventMediaPublishException
 import com.example.loginfirebase.data.repository.EventMediaStore
 import com.example.loginfirebase.data.repository.EventMediaType
 import com.example.loginfirebase.data.repository.EventVideoInput
@@ -46,8 +48,14 @@ import com.example.loginfirebase.ui.common.addCampusButton
 import com.example.loginfirebase.ui.common.addCampusText
 import com.example.loginfirebase.ui.common.createCampusInput
 import com.example.loginfirebase.ui.common.showCampusState
+import com.example.loginfirebase.ui.common.showCampusSnackbar
+import com.example.loginfirebase.ui.common.setCampusFont
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.storage.StorageException
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
@@ -69,6 +77,7 @@ class EventDetailActivity : AppCompatActivity() {
     private val authRepository = AuthRepository()
     private val eventRepository = EventRepository()
     private lateinit var body: LinearLayout
+    private lateinit var registrationBar: FrameLayout
     private var eventId: String = ""
     private var mapView: CampusMapView? = null
     private var savedMapState: Bundle? = null
@@ -168,6 +177,9 @@ class EventDetailActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_event_detail)
         body = findViewById(R.id.event_detail_content)
+        registrationBar = findViewById(R.id.event_detail_registration_bar)
+        registrationBar.removeAllViews()
+        findViewById<MaterialToolbar>(R.id.event_detail_toolbar).setNavigationOnClickListener { returnToEvents() }
         val viewModel = ViewModelProvider(this)[EventDetailViewModel::class.java]
         viewModel.state.observe(this) { state ->
             when (state) {
@@ -185,6 +197,9 @@ class EventDetailActivity : AppCompatActivity() {
 
     private fun renderEvent(event: CampusEvent, userId: String, displayName: String?, email: String?) {
         body.removeAllViews()
+        registrationBar.removeAllViews()
+        registrationBar.isVisible = true
+        findViewById<TextView>(R.id.event_detail_header).text = event.title
         mediaOwnerUid = userId
         mediaAuthorName = displayName?.trim()?.takeIf(String::isNotBlank)
             ?: email?.substringBefore('@')?.takeIf(String::isNotBlank)
@@ -198,7 +213,7 @@ class EventDetailActivity : AppCompatActivity() {
             event.category.ifBlank { getString(R.string.events_category_fallback) },
             R.color.color_blue_surface,
             R.color.color_blue_text
-        ), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) })
+        ), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = resources.getDimensionPixelSize(R.dimen.space_2) })
         val ended = event.hasEnded()
         badges.addView(createBadge(
             getString(if (ended) R.string.event_status_ended else R.string.event_status_upcoming),
@@ -206,16 +221,6 @@ class EventDetailActivity : AppCompatActivity() {
             if (ended) R.color.color_text_subtitle else R.color.color_blue_text
         ))
         overview.addView(badges)
-        overview.addView(TextView(this).apply {
-            text = event.title
-            textSize = 26f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(getColor(R.color.color_text_title))
-            setLineSpacing(dp(2).toFloat(), 1f)
-        }, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(14)
-            bottomMargin = dp(16)
-        })
         addDetailInfo(overview, getString(R.string.event_date_label), event.displayDate())
         addDetailDivider(overview)
         addDetailInfo(
@@ -227,14 +232,23 @@ class EventDetailActivity : AppCompatActivity() {
         val description = createDetailCard(getString(R.string.event_description_title))
         description.addView(TextView(this).apply {
             text = event.description
-            textSize = 16f
-            setTextColor(getColor(R.color.color_text_body))
-            setLineSpacing(dp(4).toFloat(), 1f)
+            setTextAppearance(R.style.TextAppearance_CampusHub_Body)
+            setCampusFont()
+            setLineSpacing(resources.getDimensionPixelSize(R.dimen.space_1).toFloat(), 1f)
         })
         event.location?.let { location ->
             val mapSection = createDetailCard(getString(R.string.event_location_map_title))
             mapView = CampusMapView(this, lifecycle, savedMapState)
-            mapSection.addView(mapView, LinearLayout.LayoutParams(-1, dp(230)))
+            val mapCard = MaterialCardView(this).apply {
+                radius = resources.getDimension(R.dimen.shape_medium)
+                cardElevation = 0f
+                strokeWidth = 0
+                clipToOutline = true
+            }
+            mapCard.addView(mapView, android.widget.FrameLayout.LayoutParams(
+                -1, resources.getDimensionPixelSize(R.dimen.detail_map_height)
+            ))
+            mapSection.addView(mapCard, LinearLayout.LayoutParams(-1, -2))
             mapView?.getMapAsync { map ->
                 val eventPosition = LatLng(location.latitude, location.longitude)
                 map.cameraPosition = CameraPosition.Builder()
@@ -287,7 +301,7 @@ class EventDetailActivity : AppCompatActivity() {
         commentsRecycler.adapter = commentsAdapter
         commentsContainer.showCampusState(getString(R.string.event_comments_loading))
         commentsSection.addView(commentsContainer, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(8)
+            topMargin = resources.getDimensionPixelSize(R.dimen.space_2)
         })
         refreshComments()
 
@@ -316,16 +330,15 @@ class EventDetailActivity : AppCompatActivity() {
         val participationSection = createDetailCard(getString(R.string.event_participation_title))
         val favoriteButton = MaterialButton(this).apply {
             isAllCaps = false
-            minHeight = dp(48)
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
             insetTop = 0
             insetBottom = 0
-            setTextColor(getColor(R.color.color_blue_text))
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.color_surface)))
-            strokeWidth = dp(1)
-            strokeColor = android.content.res.ColorStateList.valueOf(getColor(R.color.color_primary))
+            setTextColor(getColor(R.color.color_on_secondary_container))
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.color_secondary_container)))
+            strokeWidth = 0
         }
         participationSection.addView(favoriteButton, LinearLayout.LayoutParams(-1, -2).apply {
-            bottomMargin = dp(10)
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_3)
         })
         eventRepository.getFavorite(userId, event.id)
             .addOnSuccessListener { snapshot ->
@@ -353,8 +366,8 @@ class EventDetailActivity : AppCompatActivity() {
         val ratingBar = RatingBar(this).apply {
             numStars = 5
             stepSize = 1f
-            progressTintList = getColorStateList(R.color.color_primary)
-            secondaryProgressTintList = getColorStateList(R.color.color_blue_surface)
+            progressTintList = getColorStateList(R.color.color_secondary)
+            secondaryProgressTintList = getColorStateList(R.color.color_secondary_container)
             contentDescription = getString(R.string.event_rating_hint)
         }
         ratingSection.addCampusText(getString(R.string.event_rating_your), 20f, bold = true)
@@ -373,15 +386,15 @@ class EventDetailActivity : AppCompatActivity() {
                 .addOnFailureListener { showMessage(R.string.event_rating_save_error) }
         }
 
-        val registrationButton = MaterialButton(this).apply {
+        val registrationButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
             isAllCaps = false
-            minHeight = dp(48)
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
             insetTop = 0
             insetBottom = 0
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.color_primary)))
+            setTextColor(getColor(R.color.color_on_primary))
         }
-        participationSection.addView(registrationButton, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(10)
-        })
+        registrationBar.addView(registrationButton, FrameLayout.LayoutParams(-1, -2))
         eventRepository.getRegistration(userId, event.id)
             .addOnSuccessListener { snapshot ->
                 var isRegistered = snapshot.exists()
@@ -414,7 +427,6 @@ class EventDetailActivity : AppCompatActivity() {
             }
             .addOnFailureListener { showMessage(R.string.registration_check_error) }
 
-        body.addCampusButton(getString(R.string.back_to_events), ::returnToEvents)
     }
 
     private fun addEventPhotosSection(eventId: String, userId: String) {
@@ -430,7 +442,7 @@ class EventDetailActivity : AppCompatActivity() {
             isAllCaps = false
             maxLines = 2
             gravity = android.view.Gravity.CENTER
-            minHeight = dp(60)
+            minHeight = resources.getDimensionPixelSize(R.dimen.detail_action_height)
             insetTop = 0
             insetBottom = 0
             setOnClickListener { launchCameraForEventPhoto() }
@@ -440,27 +452,27 @@ class EventDetailActivity : AppCompatActivity() {
             isAllCaps = false
             maxLines = 2
             gravity = android.view.Gravity.CENTER
-            minHeight = dp(60)
+            minHeight = resources.getDimensionPixelSize(R.dimen.detail_action_height)
             insetTop = 0
             insetBottom = 0
             setOnClickListener { galleryPicker.launch("image/*") }
         }
-        actions.addView(cameraButton, LinearLayout.LayoutParams(0, dp(60), 1f).apply {
-            marginEnd = dp(6)
+        actions.addView(cameraButton, LinearLayout.LayoutParams(0, resources.getDimensionPixelSize(R.dimen.detail_action_height), 1f).apply {
+            marginEnd = resources.getDimensionPixelSize(R.dimen.space_2)
         })
-        actions.addView(galleryButton, LinearLayout.LayoutParams(0, dp(60), 1f).apply {
-            marginStart = dp(6)
+        actions.addView(galleryButton, LinearLayout.LayoutParams(0, resources.getDimensionPixelSize(R.dimen.detail_action_height), 1f).apply {
+            marginStart = resources.getDimensionPixelSize(R.dimen.space_2)
         })
         section.addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(4)
-            bottomMargin = dp(8)
+            topMargin = resources.getDimensionPixelSize(R.dimen.space_1)
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_2)
         })
 
         eventPhotosEmptyMessage = TextView(this).apply {
             setText(R.string.event_photos_empty)
-            textSize = 14f
-            setTextColor(getColor(R.color.color_text_body))
-            setPadding(dp(4), dp(6), dp(4), dp(6))
+            setTextAppearance(R.style.TextAppearance_CampusHub_Body)
+            setCampusFont()
+            setPadding(resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_2), resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_2))
         }
         section.addView(eventPhotosEmptyMessage)
 
@@ -482,8 +494,8 @@ class EventDetailActivity : AppCompatActivity() {
 
         audioRecordingHint = TextView(this).apply {
             setText(R.string.event_audio_recording_hint)
-            textSize = 14f
-            setTextColor(getColor(R.color.color_text_body))
+            setTextAppearance(R.style.TextAppearance_CampusHub_Body)
+            setCampusFont()
             visibility = View.GONE
         }
         section.addView(audioRecordingHint)
@@ -491,7 +503,7 @@ class EventDetailActivity : AppCompatActivity() {
         audioRecordButton = MaterialButton(this).apply {
             setText(R.string.event_audio_record)
             isAllCaps = false
-            minHeight = dp(48)
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
             insetTop = 0
             insetBottom = 0
             setOnClickListener {
@@ -505,15 +517,15 @@ class EventDetailActivity : AppCompatActivity() {
             }
         }
         section.addView(audioRecordButton, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(6)
-            bottomMargin = dp(8)
+            topMargin = resources.getDimensionPixelSize(R.dimen.space_2)
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_2)
         })
 
         eventAudiosEmptyMessage = TextView(this).apply {
             setText(R.string.event_audios_empty)
-            textSize = 14f
-            setTextColor(getColor(R.color.color_text_body))
-            setPadding(dp(4), dp(6), dp(4), dp(6))
+            setTextAppearance(R.style.TextAppearance_CampusHub_Body)
+            setCampusFont()
+            setPadding(resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_2), resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_2))
         }
         section.addView(eventAudiosEmptyMessage)
         eventAudiosContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -530,21 +542,21 @@ class EventDetailActivity : AppCompatActivity() {
             setText(R.string.event_video_record)
             isAllCaps = false
             isEnabled = !isVideoInputBusy
-            minHeight = dp(48)
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
             insetTop = 0
             insetBottom = 0
             setOnClickListener { launchVideoCapture(eventId) }
         }
         section.addView(videoRecordButton, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(4)
-            bottomMargin = dp(8)
+            topMargin = resources.getDimensionPixelSize(R.dimen.space_1)
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_2)
         })
 
         videoChooseButton = MaterialButton(this).apply {
             setText(R.string.event_video_choose)
             isAllCaps = false
             isEnabled = !isVideoInputBusy
-            minHeight = dp(48)
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
             insetTop = 0
             insetBottom = 0
             setOnClickListener { launchVideoPicker() }
@@ -553,9 +565,9 @@ class EventDetailActivity : AppCompatActivity() {
 
         eventVideosStatus = TextView(this).apply {
             setText(R.string.event_videos_loading)
-            textSize = 14f
-            setTextColor(getColor(R.color.color_text_body))
-            setPadding(dp(4), dp(12), dp(4), dp(6))
+            setTextAppearance(R.style.TextAppearance_CampusHub_Body)
+            setCampusFont()
+            setPadding(resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_3), resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_2))
         }
         section.addView(eventVideosStatus)
 
@@ -793,10 +805,10 @@ class EventDetailActivity : AppCompatActivity() {
                 container.addView(createAudioRow(eventId, userId, audio))
                 if (index < audios.lastIndex) {
                     container.addView(View(this).apply {
-                        setBackgroundColor(getColor(R.color.color_blue_surface))
-                    }, LinearLayout.LayoutParams(-1, dp(1)).apply {
-                        topMargin = dp(8)
-                        bottomMargin = dp(8)
+                    setBackgroundColor(getColor(R.color.color_secondary_container))
+                    }, LinearLayout.LayoutParams(-1, resources.getDimensionPixelSize(R.dimen.stroke_width)).apply {
+                        topMargin = resources.getDimensionPixelSize(R.dimen.space_2)
+                        bottomMargin = resources.getDimensionPixelSize(R.dimen.space_2)
                     })
                 }
             }
@@ -806,7 +818,7 @@ class EventDetailActivity : AppCompatActivity() {
     private fun createAudioRow(eventId: String, userId: String, audio: EventMedia): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(4), dp(6), dp(4), dp(6))
+            setPadding(resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_2), resources.getDimensionPixelSize(R.dimen.space_1), resources.getDimensionPixelSize(R.dimen.space_2))
         }
         val date = formatMediaDate(audio.createdAtMillis)
         row.addCampusText(getString(R.string.event_audio_item, audio.authorName, date), 14f)
@@ -814,26 +826,26 @@ class EventDetailActivity : AppCompatActivity() {
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val playButton = MaterialButton(this).apply {
             isAllCaps = false
-            minHeight = dp(44)
+            minHeight = resources.getDimensionPixelSize(R.dimen.touch_target_min)
             insetTop = 0
             insetBottom = 0
             setText(if (currentlyPlayingAudioId == audio.id) R.string.event_audio_stop else R.string.event_audio_play)
             setOnClickListener { playOrStopAudio(eventId, userId, audio) }
         }
-        actions.addView(playButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) })
+        actions.addView(playButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = resources.getDimensionPixelSize(R.dimen.space_2) })
 
         if (EventMediaStore.isOwnedBy(audio, userId)) {
             val deleteButton = MaterialButton(this).apply {
                 isAllCaps = false
-                minHeight = dp(44)
+                minHeight = resources.getDimensionPixelSize(R.dimen.touch_target_min)
                 insetTop = 0
                 insetBottom = 0
                 setText(R.string.event_audio_delete)
                 setOnClickListener { confirmDeleteMedia(audio) }
             }
-            actions.addView(deleteButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(6) })
+            actions.addView(deleteButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = resources.getDimensionPixelSize(R.dimen.space_2) })
         }
-        row.addView(actions, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+        row.addView(actions, LinearLayout.LayoutParams(-1, -2).apply { topMargin = resources.getDimensionPixelSize(R.dimen.space_1) })
         return row
     }
 
@@ -975,14 +987,46 @@ class EventDetailActivity : AppCompatActivity() {
                     showMessage(R.string.event_video_published)
                 }
             }
-        }.onFailure {
-            val message = when (type) {
-                EventMediaType.PHOTO -> R.string.event_photo_save_error
-                EventMediaType.AUDIO -> R.string.event_audio_save_error
-                EventMediaType.VIDEO -> R.string.event_video_save_error
-            }
-            showMessage(message)
+        }.onFailure { error ->
+            showMessage(mediaPublishErrorMessage(error))
         }
+    }
+
+    private fun mediaPublishErrorMessage(error: Throwable): Int {
+        val causes = generateSequence(error) { it.cause }.toList()
+        val storageError = causes.filterIsInstance<StorageException>().firstOrNull()
+        val firestoreError = causes.filterIsInstance<FirebaseFirestoreException>().firstOrNull()
+        val publishError = causes.filterIsInstance<EventMediaPublishException>().firstOrNull()
+        Log.e(
+            "CampusHubMedia",
+            "Falha ao publicar mídia na etapa ${publishError?.stage ?: "desconhecida"}; " +
+                "storageCode=${storageError?.errorCode ?: "none"}; " +
+                "firestoreCode=${firestoreError?.code?.name ?: "none"}",
+            error
+        )
+
+        storageError?.let {
+            return when (it.errorCode) {
+                StorageException.ERROR_QUOTA_EXCEEDED -> R.string.event_media_publish_quota_error
+                StorageException.ERROR_BUCKET_NOT_FOUND,
+                StorageException.ERROR_PROJECT_NOT_FOUND -> R.string.event_media_publish_bucket_error
+                StorageException.ERROR_NOT_AUTHORIZED -> R.string.event_media_publish_permission_error
+                StorageException.ERROR_NOT_AUTHENTICATED -> R.string.event_media_publish_auth_error
+                StorageException.ERROR_RETRY_LIMIT_EXCEEDED -> R.string.event_media_publish_network_error
+                else -> if (causes.any { cause -> cause is FirebaseNetworkException }) {
+                    R.string.event_media_publish_network_error
+                } else {
+                    R.string.event_media_publish_error
+                }
+            }
+        }
+        if (firestoreError?.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+            return R.string.event_media_publish_permission_error
+        }
+        if (causes.any { it is FirebaseNetworkException }) {
+            return R.string.event_media_publish_network_error
+        }
+        return R.string.event_media_publish_error
     }
 
     private fun refreshEventPhotos(eventId: String) {
@@ -1105,33 +1149,34 @@ class EventDetailActivity : AppCompatActivity() {
     }
 
     private fun showMessage(stringId: Int) {
-        Toast.makeText(this, getString(stringId), Toast.LENGTH_SHORT).show()
+        findViewById<View>(android.R.id.content).showCampusSnackbar(stringId)
     }
 
     private fun createDetailCard(title: String? = null): LinearLayout {
         val card = MaterialCardView(this).apply {
-            radius = dp(18).toFloat()
-            cardElevation = dp(1).toFloat()
-            strokeWidth = dp(1)
+            radius = resources.getDimension(R.dimen.shape_medium)
+            cardElevation = 0f
+            strokeWidth = resources.getDimensionPixelSize(R.dimen.stroke_width)
             strokeColor = getColor(R.color.color_border)
             setCardBackgroundColor(getColor(R.color.color_surface))
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            val inset = resources.getDimensionPixelSize(R.dimen.space_4)
+            setPadding(inset, inset, inset, inset)
         }
         card.addView(content, android.widget.FrameLayout.LayoutParams(-1, -2))
         body.addView(card, LinearLayout.LayoutParams(-1, -2).apply {
-            bottomMargin = dp(12)
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_3)
         })
         title?.let { label ->
             content.addView(TextView(this).apply {
                 text = label
-                textSize = 19f
-                setTypeface(typeface, Typeface.BOLD)
+                setTextAppearance(R.style.TextAppearance_CampusHub_Title)
+                setCampusFont(bold = true)
                 setTextColor(getColor(R.color.color_text_title))
             }, LinearLayout.LayoutParams(-1, -2).apply {
-                bottomMargin = dp(10)
+                bottomMargin = resources.getDimensionPixelSize(R.dimen.space_3)
             })
         }
         return content
@@ -1139,47 +1184,67 @@ class EventDetailActivity : AppCompatActivity() {
 
     private fun createBadge(text: String, backgroundColor: Int, textColor: Int): TextView = TextView(this).apply {
         this.text = text
-        textSize = 11f
-        setTypeface(typeface, Typeface.BOLD)
+        setTextAppearance(R.style.TextAppearance_CampusHub_Label)
+        setCampusFont(bold = true)
         setTextColor(getColor(textColor))
         background = GradientDrawable().apply {
             setColor(getColor(backgroundColor))
-            cornerRadius = dp(24).toFloat()
+            cornerRadius = resources.getDimension(R.dimen.shape_large)
         }
-        setPadding(dp(10), dp(6), dp(10), dp(6))
+        setPadding(resources.getDimensionPixelSize(R.dimen.space_3), resources.getDimensionPixelSize(R.dimen.space_2), resources.getDimensionPixelSize(R.dimen.space_3), resources.getDimensionPixelSize(R.dimen.space_2))
     }
 
     private fun addDetailInfo(container: LinearLayout, label: String, value: String) {
-        container.addView(TextView(this).apply {
-            text = label
-            textSize = 12f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(getColor(R.color.color_text_subtitle))
+        val icon = if (label == getString(R.string.event_date_label)) R.drawable.ic_calendar else R.drawable.ic_location
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        row.addView(android.widget.ImageView(this).apply {
+            setImageResource(icon)
+            imageTintList = getColorStateList(R.color.color_primary)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(
+            resources.getDimensionPixelSize(R.dimen.icon_size_standard),
+            resources.getDimensionPixelSize(R.dimen.icon_size_standard)
+        ))
+        val labels = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@EventDetailActivity).apply {
+                text = label
+                setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+                setCampusFont(bold = true)
+                setTextColor(getColor(R.color.color_text_subtitle))
+            })
+            addView(TextView(this@EventDetailActivity).apply {
+                text = value
+                setTextAppearance(R.style.TextAppearance_CampusHub_Body)
+                setCampusFont()
+                setLineSpacing(resources.getDimensionPixelSize(R.dimen.space_1).toFloat(), 1f)
+            }, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = resources.getDimensionPixelSize(R.dimen.space_1)
+            })
+        }
+        row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginStart = resources.getDimensionPixelSize(R.dimen.space_3)
         })
-        container.addView(TextView(this).apply {
-            text = value
-            textSize = 16f
-            setTextColor(getColor(R.color.color_text_body))
-            setLineSpacing(dp(2).toFloat(), 1f)
-        }, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(3)
-        })
+        container.addView(row)
     }
 
     private fun addDetailDivider(container: LinearLayout) {
         container.addView(View(this).apply {
             setBackgroundColor(getColor(R.color.color_border))
-        }, LinearLayout.LayoutParams(-1, dp(1)).apply {
-            topMargin = dp(12)
-            bottomMargin = dp(12)
+        }, LinearLayout.LayoutParams(-1, resources.getDimensionPixelSize(R.dimen.stroke_width)).apply {
+            topMargin = resources.getDimensionPixelSize(R.dimen.space_3)
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_3)
         })
     }
 
     private fun createSectionNote(text: String): TextView = TextView(this).apply {
         this.text = text
-        textSize = 13f
-        setTextColor(getColor(R.color.color_text_subtitle))
-        setPadding(0, 0, 0, dp(8))
+        setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+        setCampusFont()
+        setPadding(0, 0, 0, resources.getDimensionPixelSize(R.dimen.space_2))
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1193,5 +1258,4 @@ class EventDetailActivity : AppCompatActivity() {
         mapView?.onLowMemory()
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

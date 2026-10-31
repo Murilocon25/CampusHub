@@ -8,12 +8,13 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.loginfirebase.MainActivity
 import com.example.loginfirebase.R
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.util.firebaseErrorMessage
+import com.example.loginfirebase.ui.common.showCampusSnackbar
+import com.google.android.material.snackbar.Snackbar
 
 class LoginActivity : AppCompatActivity() {
 
@@ -35,7 +36,7 @@ class LoginActivity : AppCompatActivity() {
             val senhaTexto = senha.text.toString().trim()
 
             if (emailTexto.isEmpty() || senhaTexto.isEmpty()) {
-                Toast.makeText(this, getString(R.string.erro_campos_vazios), Toast.LENGTH_SHORT).show()
+                findViewById<View>(android.R.id.content).showCampusSnackbar(R.string.erro_campos_vazios)
                 return@setOnClickListener
             }
             if (!Patterns.EMAIL_ADDRESS.matcher(emailTexto).matches()) {
@@ -54,11 +55,9 @@ class LoginActivity : AppCompatActivity() {
                     if (task.isSuccessful) {
                         abrirEventos()
                     } else {
-                        Toast.makeText(
-                            this,
-                            firebaseErrorMessage(task.exception),
-                            Toast.LENGTH_LONG
-                        ).show()
+                        findViewById<View>(android.R.id.content).showCampusSnackbar(
+                            firebaseErrorMessage(task.exception), Snackbar.LENGTH_LONG
+                        )
                     }
                 }
         }
@@ -84,7 +83,7 @@ class LoginActivity : AppCompatActivity() {
                 } else {
                     firebaseErrorMessage(task.exception)
                 }
-                Toast.makeText(this, mensagem, Toast.LENGTH_LONG).show()
+                findViewById<View>(android.R.id.content).showCampusSnackbar(mensagem, Snackbar.LENGTH_LONG)
             }
         }
 

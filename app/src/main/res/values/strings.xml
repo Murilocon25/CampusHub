@@ -1,5 +1,39 @@
 <resources>
     <string name="app_name">CampusHub</string>
+    <string name="campus_brand_name">CampusHub</string>
+    <string name="campus_brand_tagline">Seu campus, cheio de possibilidades.</string>
+    <string name="event_greeting_fallback">Olá, estudante</string>
+    <string name="event_greeting_named">Olá, %1$s</string>
+    <string name="event_cover_accessibility">Ilustração de calendário para evento</string>
+    <string name="event_more_accessibility">Abrir detalhes do evento</string>
+    <string name="profile_avatar_accessibility">Avatar do perfil</string>
+    <string name="profile_edit_section">Seus dados</string>
+    <string name="profile_course_badge">Curso: %1$s</string>
+    <string name="profile_campus_badge">Campus: %1$s</string>
+    <string name="comment_avatar_accessibility">Avatar de quem comentou</string>
+    <string name="comment_actions_accessibility">Ações do comentário</string>
+    <string name="create_event_close_accessibility">Fechar formulário</string>
+    <string name="create_event_section_info">Informações</string>
+    <string name="create_event_section_schedule">Data e hora</string>
+    <string name="create_event_section_location">Local</string>
+    <string name="create_event_section_description">Descrição</string>
+    <string name="relative_time_now">agora</string>
+    <string name="state_retry">Tentar novamente</string>
+    <string name="state_explore_events">Explorar eventos</string>
+    <string name="state_create_first_event">Criar primeiro evento</string>
+    <string name="state_clear_filters">Limpar filtros</string>
+    <plurals name="relative_minutes_ago">
+        <item quantity="one">há %d min</item>
+        <item quantity="other">há %d min</item>
+    </plurals>
+    <plurals name="relative_hours_ago">
+        <item quantity="one">há %d h</item>
+        <item quantity="other">há %d h</item>
+    </plurals>
+    <plurals name="relative_days_ago">
+        <item quantity="one">há %d dia</item>
+        <item quantity="other">há %d dias</item>
+    </plurals>
 
     <string name="login_title">Bem-vindo!</string>
     <string name="login_subtitle">Entre na sua conta para continuar</string>
@@ -88,7 +122,7 @@
     <string name="event_photo_take">Tirar foto</string>
     <string name="event_photo_choose">Escolher da galeria</string>
     <string name="event_photo_saved">Foto publicada no evento.</string>
-    <string name="event_photo_save_error">Não foi possível publicar a foto. Verifique sua conexão e tente novamente.</string>
+    <string name="event_photo_save_error">Não foi possível publicar a foto. O Firebase retornou um erro.</string>
     <string name="event_photo_delete">Excluir</string>
     <string name="event_photo_item_accessibility">Foto de %1$s, publicada em %2$s</string>
     <string name="event_photo_camera_unavailable">Não foi possível abrir a câmera neste dispositivo.</string>
@@ -117,7 +151,13 @@
     <string name="event_video_capture_error">Não foi possível gravar ou ler o vídeo.</string>
     <string name="event_video_picker_error">Não foi possível abrir a galeria.</string>
     <string name="event_video_input_error">Não foi possível ler o vídeo selecionado.</string>
-    <string name="event_video_save_error">Não foi possível publicar o vídeo. Verifique sua conexão e tente novamente.</string>
+    <string name="event_video_save_error">Não foi possível publicar o vídeo. O Firebase retornou um erro.</string>
+    <string name="event_media_publish_network_error">A conexão caiu ou o envio expirou. Verifique a internet e tente novamente.</string>
+    <string name="event_media_publish_permission_error">O Firebase recusou a publicação. Confira as regras do Storage e do Firestore para mídia.</string>
+    <string name="event_media_publish_auth_error">Sua sessão expirou. Entre novamente e tente publicar.</string>
+    <string name="event_media_publish_bucket_error">O Firebase Storage não está configurado para este projeto. Confira o bucket no Firebase Console.</string>
+    <string name="event_media_publish_quota_error">O Firebase Storage atingiu o limite ou exige o plano Blaze. Confira o faturamento e a cota do projeto.</string>
+    <string name="event_media_publish_error">Não foi possível publicar. O Firebase retornou um erro. Tente novamente.</string>
     <string name="event_video_invalid">O arquivo selecionado não é um vídeo compatível.</string>
     <string name="event_video_too_long">O vídeo deve ter no máximo 60 segundos.</string>
     <string name="event_video_too_large">O vídeo deve ter no máximo 100 MB.</string>

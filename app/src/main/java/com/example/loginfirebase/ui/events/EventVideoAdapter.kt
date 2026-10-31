@@ -9,6 +9,7 @@ import androidx.core.view.isVisible
 import com.example.loginfirebase.R
 import com.example.loginfirebase.data.repository.EventMedia
 import com.example.loginfirebase.data.repository.EventMediaStore
+import com.example.loginfirebase.ui.common.setCampusFont
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import java.text.SimpleDateFormat
@@ -32,57 +33,56 @@ class EventVideoAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
         val context = parent.context
         val title = TextView(context).apply {
-            textSize = 14f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setTextColor(context.getColor(R.color.color_text_title))
+            setTextAppearance(R.style.TextAppearance_CampusHub_Label)
+            setCampusFont(bold = true)
         }
         val details = TextView(context).apply {
-            textSize = 13f
-            setTextColor(context.getColor(R.color.color_text_subtitle))
+            setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+            setCampusFont()
         }
         val watchButton = MaterialButton(context).apply {
             setText(R.string.event_video_watch)
             isAllCaps = false
-            minHeight = dp(context, 42)
+            minHeight = context.resources.getDimensionPixelSize(R.dimen.touch_target_min)
             insetTop = 0
             insetBottom = 0
         }
         val deleteButton = MaterialButton(context).apply {
             setText(R.string.event_video_delete)
             isAllCaps = false
-            minHeight = dp(context, 42)
+            minHeight = context.resources.getDimensionPixelSize(R.dimen.touch_target_min)
             insetTop = 0
             insetBottom = 0
         }
         val actions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(watchButton, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                marginEnd = dp(context, 4)
+                marginEnd = context.resources.getDimensionPixelSize(R.dimen.space_1)
             })
             addView(deleteButton, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                marginStart = dp(context, 4)
+                marginStart = context.resources.getDimensionPixelSize(R.dimen.space_1)
             })
         }
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12))
+            setPadding(context.resources.getDimensionPixelSize(R.dimen.space_4), context.resources.getDimensionPixelSize(R.dimen.space_3), context.resources.getDimensionPixelSize(R.dimen.space_4), context.resources.getDimensionPixelSize(R.dimen.space_3))
             addView(title, LinearLayout.LayoutParams(-1, -2))
             addView(details, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(context, 4)
+                topMargin = context.resources.getDimensionPixelSize(R.dimen.space_1)
             })
             addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(context, 6)
+                topMargin = context.resources.getDimensionPixelSize(R.dimen.space_2)
             })
         }
         val card = MaterialCardView(context).apply {
-            radius = dp(context, 12).toFloat()
+            radius = context.resources.getDimension(R.dimen.shape_medium)
             cardElevation = 0f
-            strokeWidth = dp(context, 1)
+            strokeWidth = context.resources.getDimensionPixelSize(R.dimen.stroke_width)
             strokeColor = context.getColor(R.color.color_border)
             setCardBackgroundColor(context.getColor(R.color.color_surface))
             addView(content, android.widget.FrameLayout.LayoutParams(-1, -2))
             layoutParams = RecyclerView.LayoutParams(-1, -2).apply {
-                bottomMargin = dp(context, 8)
+                bottomMargin = context.resources.getDimensionPixelSize(R.dimen.space_2)
             }
         }
         return VideoViewHolder(card, title, details, watchButton, deleteButton)
@@ -138,6 +138,4 @@ class EventVideoAdapter(
         }
     }
 
-    private fun dp(context: android.content.Context, value: Int): Int =
-        (value * context.resources.displayMetrics.density).toInt()
 }

@@ -1,49 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/color_background"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/event_location_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/color_surface"
+        android:title="@string/event_location_picker_title"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:navigationIconTint="@color/color_text_title"
+        app:titleTextAppearance="@style/TextAppearance.CampusHub.Title" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/event_location_picker_title"
-        android:textAppearance="@style/TextAppearance.CampusHub.Title"
-        android:textSize="22sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginStart="@dimen/space_4"
+        android:layout_marginTop="@dimen/space_2"
+        android:layout_marginEnd="@dimen/space_4"
         android:text="@string/event_location_picker_instructions"
-        android:textColor="@color/color_text_body"
-        android:textSize="14sp" />
+        android:textAppearance="@style/TextAppearance.CampusHub.Body" />
 
-    <FrameLayout
-        android:id="@+id/event_location_map_container"
+    <com.google.android.material.card.MaterialCardView
+        style="@style/Widget.CampusHub.Card"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="12dp"
+        android:layout_marginStart="@dimen/space_4"
+        android:layout_marginTop="@dimen/space_3"
+        android:layout_marginEnd="@dimen/space_4"
+        android:layout_marginBottom="@dimen/space_2"
         android:layout_weight="1"
-        android:minHeight="240dp" />
+        android:minHeight="240dp"
+        app:shapeAppearance="@style/ShapeAppearance.CampusHub.Medium">
+        <FrameLayout
+            android:id="@+id/event_location_map_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </com.google.android.material.card.MaterialCardView>
 
     <TextView
         android:id="@+id/event_location_selection_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp"
-        android:textColor="@color/color_text_body"
-        android:textSize="14sp" />
+        android:paddingStart="@dimen/space_4"
+        android:paddingTop="@dimen/space_2"
+        android:paddingEnd="@dimen/space_4"
+        android:paddingBottom="@dimen/space_1"
+        android:textAppearance="@style/TextAppearance.CampusHub.Body" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/confirm_event_location"
+        style="@style/Widget.CampusHub.Button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginStart="@dimen/space_4"
+        android:layout_marginTop="@dimen/space_2"
+        android:layout_marginEnd="@dimen/space_4"
+        android:layout_marginBottom="@dimen/space_4"
         android:enabled="false"
-        android:text="@string/event_location_confirm"
-        android:textAllCaps="false" />
+        android:text="@string/event_location_confirm" />
 </LinearLayout>

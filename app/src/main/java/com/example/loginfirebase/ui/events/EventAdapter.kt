@@ -9,7 +9,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.loginfirebase.R
 import com.example.loginfirebase.data.model.CampusEvent
-import com.google.android.material.button.MaterialButton
+import com.google.android.material.chip.Chip
 import com.google.android.material.card.MaterialCardView
 
 class EventAdapter(private val onOpen: (CampusEvent) -> Unit) :
@@ -23,12 +23,12 @@ class EventAdapter(private val onOpen: (CampusEvent) -> Unit) :
 
     inner class EventViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val card = itemView as MaterialCardView
-        private val category: TextView = itemView.findViewById(R.id.event_category)
-        private val status: TextView = itemView.findViewById(R.id.event_status)
+        private val category: Chip = itemView.findViewById(R.id.event_category)
+        private val status: Chip = itemView.findViewById(R.id.event_status)
         private val title: TextView = itemView.findViewById(R.id.event_title)
         private val date: TextView = itemView.findViewById(R.id.event_date)
         private val place: TextView = itemView.findViewById(R.id.event_place)
-        private val open: MaterialButton = itemView.findViewById(R.id.event_open)
+        private val open: View = itemView.findViewById(R.id.event_open)
 
         fun bind(event: CampusEvent) {
             val context = itemView.context
@@ -38,10 +38,11 @@ class EventAdapter(private val onOpen: (CampusEvent) -> Unit) :
             place.text = context.getString(R.string.event_place, event.place.ifBlank { context.getString(R.string.not_informed) })
             val ended = event.hasEnded()
             status.text = context.getString(if (ended) R.string.event_status_ended else R.string.event_status_upcoming)
-            status.setTextColor(context.getColor(if (ended) R.color.color_text_subtitle else R.color.color_blue_text))
-            status.setBackgroundColor(context.getColor(if (ended) R.color.color_border else R.color.color_blue_surface))
+            status.setChipBackgroundColorResource(if (ended) R.color.color_surface_variant else R.color.color_primary_container)
+            status.setTextColor(context.getColor(if (ended) R.color.color_text_subtitle else R.color.color_on_primary_container))
             card.contentDescription = context.getString(R.string.event_card_description, event.title)
             open.setOnClickListener { onOpen(event) }
+            card.setOnClickListener { onOpen(event) }
         }
     }
 

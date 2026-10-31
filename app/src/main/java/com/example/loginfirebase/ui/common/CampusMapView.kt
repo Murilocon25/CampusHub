@@ -1,8 +1,6 @@
 package com.example.loginfirebase.ui.common
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -29,7 +27,7 @@ class CampusMapView(
         addView(mapView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(createAttribution(context), LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.BOTTOM or Gravity.END
-            val margin = dp(context, 6)
+            val margin = resources.getDimensionPixelSize(R.dimen.space_2)
             setMargins(margin, margin, margin, margin)
         })
         lifecycle.addObserver(this)
@@ -68,19 +66,21 @@ class CampusMapView(
 
     private fun createAttribution(context: Context) = TextView(context).apply {
         text = context.getString(R.string.map_attribution)
-        textSize = 10f
-        setTextColor(Color.rgb(55, 55, 55))
-        typeface = Typeface.DEFAULT
-        setPadding(dp(context, 6), dp(context, 3), dp(context, 6), dp(context, 3))
+        setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+        setCampusFont()
+        setTextColor(context.getColor(R.color.color_text_body))
+        setPadding(
+            resources.getDimensionPixelSize(R.dimen.space_2),
+            resources.getDimensionPixelSize(R.dimen.space_1),
+            resources.getDimensionPixelSize(R.dimen.space_2),
+            resources.getDimensionPixelSize(R.dimen.space_1)
+        )
         background = GradientDrawable().apply {
-            setColor(Color.argb(220, 255, 255, 255))
-            cornerRadius = dp(context, 3).toFloat()
+            setColor(context.getColor(R.color.color_surface))
+            cornerRadius = resources.getDimension(R.dimen.shape_small)
         }
-        elevation = dp(context, 2).toFloat()
+        elevation = resources.getDimension(R.dimen.space_1)
     }
-
-    private fun dp(context: Context, value: Int): Int =
-        (value * context.resources.displayMetrics.density).toInt()
 
     companion object {
         private const val MAP_STATE_KEY = "campus_map_view_state"

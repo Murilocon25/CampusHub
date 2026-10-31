@@ -11,9 +11,9 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="@android:color/black"
-        android:titleTextColor="@color/color_surface"
+        android:titleTextColor="@color/player_controls_foreground"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:navigationIconTint="@color/color_surface" />
+        app:navigationIconTint="@color/player_controls_foreground" />
 
     <FrameLayout
         android:layout_width="match_parent"

@@ -3,6 +3,7 @@ package com.example.loginfirebase
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.fragment.app.Fragment
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.ui.auth.LoginActivity
@@ -18,6 +19,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedItem = R.id.navigation_events
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         if (authRepository.currentUser == null) {
             startActivity(Intent(this, LoginActivity::class.java))
@@ -26,6 +28,7 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(R.layout.activity_main)
         val navigation = findViewById<BottomNavigationView>(R.id.main_navigation)
+        navigation.setItemActiveIndicatorEnabled(true)
         selectedItem = intent.getIntExtra(EXTRA_OPEN_TAB, 0).takeIf { it != 0 }
             ?: savedInstanceState?.getInt(STATE_SELECTED_ITEM)
             ?: R.id.navigation_events

@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.loginfirebase.R
 import com.example.loginfirebase.ui.common.CampusMapView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.appbar.MaterialToolbar
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
@@ -29,6 +30,7 @@ class EventLocationPickerActivity : AppCompatActivity() {
 
         confirmButton = findViewById(R.id.confirm_event_location)
         selectionStatus = findViewById(R.id.event_location_selection_status)
+        findViewById<MaterialToolbar>(R.id.event_location_toolbar).setNavigationOnClickListener { finish() }
         selectedPosition = if (savedInstanceState?.containsKey(STATE_LATITUDE) == true &&
             savedInstanceState.containsKey(STATE_LONGITUDE)
         ) {

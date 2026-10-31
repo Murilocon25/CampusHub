@@ -28,6 +28,34 @@ class EventVideoInputException(
     }
 }
 
+internal data class ValidatedEventVideoMetadata(
+    val mimeType: String,
+    val durationMs: Long
+)
+
+internal fun validateEventVideoMetadata(
+    mimeType: String?,
+    durationMs: Long?
+): ValidatedEventVideoMetadata {
+    val validMimeType = mimeType?.takeIf { it.startsWith("video/", ignoreCase = true) }
+        ?: throw EventVideoInputException(EventVideoInputException.Reason.INVALID_VIDEO)
+    val validDurationMs = durationMs?.takeIf { it > 0L }
+        ?: throw EventVideoInputException(EventVideoInputException.Reason.INVALID_VIDEO)
+    if (validDurationMs > EventVideoInput.MAX_DURATION_MS) {
+        throw EventVideoInputException(EventVideoInputException.Reason.TOO_LONG)
+    }
+    return ValidatedEventVideoMetadata(validMimeType, validDurationMs)
+}
+
+internal fun validateEventVideoSize(sizeBytes: Long) {
+    if (sizeBytes <= 0L) {
+        throw EventVideoInputException(EventVideoInputException.Reason.INVALID_VIDEO)
+    }
+    if (sizeBytes > EventVideoInput.MAX_SIZE_BYTES) {
+        throw EventVideoInputException(EventVideoInputException.Reason.TOO_LARGE)
+    }
+}
+
 /** Copies and validates event videos in temporary app-private storage. */
 object EventVideoInput {
     const val MAX_DURATION_MS = 60_000L
@@ -98,12 +126,10 @@ object EventVideoInput {
         reportedMimeType: String?
     ): PendingEventVideo {
         try {
-            if (!file.isFile || file.length() <= 0L) {
+            if (!file.isFile) {
                 throw EventVideoInputException(EventVideoInputException.Reason.INVALID_VIDEO)
             }
-            if (file.length() > MAX_SIZE_BYTES) {
-                throw EventVideoInputException(EventVideoInputException.Reason.TOO_LARGE)
-            }
+            validateEventVideoSize(file.length())
 
             val retriever = MediaMetadataRetriever()
             val mimeType: String?
@@ -120,16 +146,13 @@ object EventVideoInput {
                 try { retriever.release() } catch (_: Exception) { }
             }
 
-            if (mimeType.isNullOrBlank() || !mimeType.startsWith("video/", ignoreCase = true) ||
-                durationMs == null || durationMs <= 0L
-            ) {
-                throw EventVideoInputException(EventVideoInputException.Reason.INVALID_VIDEO)
-            }
-            if (durationMs > MAX_DURATION_MS) {
-                throw EventVideoInputException(EventVideoInputException.Reason.TOO_LONG)
-            }
-
-            return PendingEventVideo(eventId, file, mimeType, durationMs)
+            val validatedMetadata = validateEventVideoMetadata(mimeType, durationMs)
+            return PendingEventVideo(
+                eventId = eventId,
+                file = file,
+                mimeType = validatedMetadata.mimeType,
+                durationMs = validatedMetadata.durationMs
+            )
         } catch (error: EventVideoInputException) {
             file.delete()
             throw error
@@ -163,15 +186,11 @@ object EventVideoInput {
                     val count = input.read(buffer)
                     if (count < 0) break
                     totalBytes += count
-                    if (totalBytes > MAX_SIZE_BYTES) {
-                        throw EventVideoInputException(EventVideoInputException.Reason.TOO_LARGE)
-                    }
+                    validateEventVideoSize(totalBytes)
                     output.write(buffer, 0, count)
                 }
             }
-            if (destination.length() == 0L) {
-                throw EventVideoInputException(EventVideoInputException.Reason.INVALID_VIDEO)
-            }
+            validateEventVideoSize(destination.length())
             return destination
         } catch (error: EventVideoInputException) {
             destination.delete()
