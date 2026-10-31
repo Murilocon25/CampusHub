@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="space_1">4dp</dimen>
+    <dimen name="space_2">8dp</dimen>
+    <dimen name="space_3">12dp</dimen>
+    <dimen name="space_4">16dp</dimen>
+    <dimen name="space_5">24dp</dimen>
+    <dimen name="space_6">32dp</dimen>
+    <dimen name="shape_small">8dp</dimen>
+    <dimen name="shape_medium">16dp</dimen>
+    <dimen name="shape_large">24dp</dimen>
+    <dimen name="touch_target_min">48dp</dimen>
+    <dimen name="button_height">52dp</dimen>
+    <dimen name="elevation_bar">4dp</dimen>
+    <dimen name="stroke_width">1dp</dimen>
+    <dimen name="detail_map_height">230dp</dimen>
+    <dimen name="photo_thumbnail_size">112dp</dimen>
+    <dimen name="photo_decode_target">224dp</dimen>
+    <dimen name="list_fab_clearance">96dp</dimen>
+    <dimen name="detail_action_height">60dp</dimen>
+    <dimen name="detail_cover_height">144dp</dimen>
+    <dimen name="icon_size_standard">24dp</dimen>
+    <dimen name="skeleton_cover_height">88dp</dimen>
+</resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="color_primary">#ADC6FF</color>
+    <color name="color_primary_dark">#7FA6F3</color>
+    <color name="color_on_primary">#0B2E68</color>
+    <color name="color_primary_container">#244A86</color>
+    <color name="color_on_primary_container">#DCE8FF</color>
+    <color name="color_secondary">#FFB6A2</color>
+    <color name="color_on_secondary">#5C1C0B</color>
+    <color name="color_secondary_container">#79301D</color>
+    <color name="color_on_secondary_container">#FFE1D8</color>
+    <color name="color_surface">#182231</color>
+    <color name="color_surface_variant">#273446</color>
+    <color name="color_background">#101925</color>
+    <color name="color_outline">#8C9BB0</color>
+    <color name="color_border">#354458</color>
+    <color name="color_text_title">#ECF1FA</color>
+    <color name="color_text_body">#D7E0EF</color>
+    <color name="color_text_subtitle">#B3C0D2</color>
+    <color name="color_text_hint">#A5B3C5</color>
+    <color name="color_error">#FFB4AB</color>
+    <color name="color_success">#8CD7B3</color>
+    <color name="color_warning">#F4C66A</color>
+    <color name="color_blue_surface">#244A86</color>
+    <color name="color_blue_text">#DCE8FF</color>
+    <color name="color_transparent">#00000000</color>
+    <color name="player_controls_foreground">#FFFFFF</color>
+</resources>
