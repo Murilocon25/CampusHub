@@ -217,7 +217,7 @@ object EventMediaStore {
         ).takeIf { it.authorUid.isNotBlank() && it.storagePath.isNotBlank() }
     }
 
-    private fun matchesType(type: EventMediaType, mimeType: String): Boolean = when (type) {
+    internal fun matchesType(type: EventMediaType, mimeType: String): Boolean = when (type) {
         EventMediaType.PHOTO -> mimeType.startsWith("image/", ignoreCase = true)
         EventMediaType.AUDIO -> mimeType.startsWith("audio/", ignoreCase = true)
         EventMediaType.VIDEO -> mimeType.startsWith("video/", ignoreCase = true)
