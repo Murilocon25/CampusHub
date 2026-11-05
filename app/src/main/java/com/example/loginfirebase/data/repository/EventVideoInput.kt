@@ -56,6 +56,47 @@ internal fun validateEventVideoSize(sizeBytes: Long) {
     }
 }
 
+internal fun copyEventVideoToPendingFile(
+    directory: File,
+    extension: String,
+    input: InputStream,
+    maxBytes: Long = EventVideoInput.MAX_SIZE_BYTES
+): File {
+    if (!directory.exists() && !directory.mkdirs()) {
+        throw EventVideoInputException(EventVideoInputException.Reason.UNREADABLE)
+    }
+
+    val destination = try {
+        File.createTempFile("selected_", ".$extension", directory)
+    } catch (error: Exception) {
+        throw EventVideoInputException(EventVideoInputException.Reason.UNREADABLE, error)
+    }
+    try {
+        destination.outputStream().use { output ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var totalBytes = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                totalBytes += count
+                if (totalBytes > maxBytes) {
+                    throw EventVideoInputException(EventVideoInputException.Reason.TOO_LARGE)
+                }
+                validateEventVideoSize(totalBytes)
+                output.write(buffer, 0, count)
+            }
+        }
+        validateEventVideoSize(destination.length())
+        return destination
+    } catch (error: EventVideoInputException) {
+        destination.delete()
+        throw error
+    } catch (error: Exception) {
+        destination.delete()
+        throw EventVideoInputException(EventVideoInputException.Reason.UNREADABLE, error)
+    }
+}
+
 /** Copies and validates event videos in temporary app-private storage. */
 object EventVideoInput {
     const val MAX_DURATION_MS = 60_000L
@@ -167,39 +208,7 @@ object EventVideoInput {
         eventId: String,
         extension: String,
         input: InputStream
-    ): File {
-        val directory = eventDirectory(context, eventId)
-        if (!directory.exists() && !directory.mkdirs()) {
-            throw EventVideoInputException(EventVideoInputException.Reason.UNREADABLE)
-        }
-
-        val destination = try {
-            File.createTempFile("selected_", ".$extension", directory)
-        } catch (error: Exception) {
-            throw EventVideoInputException(EventVideoInputException.Reason.UNREADABLE, error)
-        }
-        try {
-            destination.outputStream().use { output ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var totalBytes = 0L
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    totalBytes += count
-                    validateEventVideoSize(totalBytes)
-                    output.write(buffer, 0, count)
-                }
-            }
-            validateEventVideoSize(destination.length())
-            return destination
-        } catch (error: EventVideoInputException) {
-            destination.delete()
-            throw error
-        } catch (error: Exception) {
-            destination.delete()
-            throw EventVideoInputException(EventVideoInputException.Reason.UNREADABLE, error)
-        }
-    }
+    ): File = copyEventVideoToPendingFile(eventDirectory(context, eventId), extension, input)
 
     private fun extensionFor(context: Context, uri: Uri, mimeType: String?): String {
         val fromMimeType = mimeType?.let(MimeTypeMap.getSingleton()::getExtensionFromMimeType)

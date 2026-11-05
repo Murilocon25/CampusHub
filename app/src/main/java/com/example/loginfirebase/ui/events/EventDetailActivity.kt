@@ -35,8 +35,9 @@ import com.example.loginfirebase.data.model.CampusEvent
 import com.example.loginfirebase.data.model.toEventComment
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventRepository
+import com.example.loginfirebase.data.repository.EventAudioInput
+import com.example.loginfirebase.data.repository.EventAudioInputException
 import com.example.loginfirebase.data.repository.EventMedia
-import com.example.loginfirebase.data.repository.EventMediaPublishException
 import com.example.loginfirebase.data.repository.EventMediaStore
 import com.example.loginfirebase.data.repository.EventMediaType
 import com.example.loginfirebase.data.repository.EventVideoInput
@@ -53,9 +54,6 @@ import com.example.loginfirebase.ui.common.setCampusFont
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.firebase.FirebaseNetworkException
-import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.storage.StorageException
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
@@ -69,7 +67,6 @@ import java.util.concurrent.Executors
 class EventDetailActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_EVENT_ID = "event_id"
-        private const val MAX_AUDIO_DURATION_MS = 60_000
         private const val MAX_VIDEO_DURATION_SECONDS = 60
         private const val STATE_PENDING_VIDEO_CAPTURE = "pending_video_capture"
     }
@@ -592,7 +589,7 @@ class EventDetailActivity : AppCompatActivity() {
             eventVideosStatus?.isVisible = true
             eventVideosRecycler?.isVisible = false
         }
-        EventMediaStore.list(eventId, EventMediaType.VIDEO) { result ->
+        EventMediaStore.list(applicationContext, eventId, EventMediaType.VIDEO) { result ->
             if (isFinishing || isDestroyed) return@list
             val status = eventVideosStatus ?: return@list
             val recycler = eventVideosRecycler ?: return@list
@@ -713,7 +710,7 @@ class EventDetailActivity : AppCompatActivity() {
     private fun beginAudioRecording() {
         if (audioRecorder != null) return
         val destination = try {
-            createPendingAudioRecordingFile(audioEventId)
+            EventAudioInput.createCaptureFile(cacheDir, audioEventId)
         } catch (_: Exception) {
             showMessage(R.string.event_audio_record_error)
             return
@@ -726,7 +723,7 @@ class EventDetailActivity : AppCompatActivity() {
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             recorder.setAudioSamplingRate(44_100)
             recorder.setAudioEncodingBitRate(96_000)
-            recorder.setMaxDuration(MAX_AUDIO_DURATION_MS)
+            recorder.setMaxDuration(EventAudioInput.MAX_DURATION_MS.toInt())
             recorder.setOutputFile(destination.absolutePath)
             recorder.setOnInfoListener { _, what, _ ->
                 if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) stopAndPublishAudio()
@@ -742,16 +739,6 @@ class EventDetailActivity : AppCompatActivity() {
             destination.delete()
             showMessage(R.string.event_audio_record_error)
         }
-    }
-
-    private fun createPendingAudioRecordingFile(eventId: String): File {
-        val safeEventId = eventId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
-            .ifBlank { "event" }
-        val directory = File(File(cacheDir, "event_audio_pending"), safeEventId)
-        if (!directory.exists() && !directory.mkdirs()) {
-            throw IOException("Cannot create the temporary event audio directory")
-        }
-        return File.createTempFile("recording_", ".m4a", directory)
     }
 
     private fun stopAndPublishAudio() {
@@ -775,24 +762,37 @@ class EventDetailActivity : AppCompatActivity() {
             showMessage(R.string.event_audio_record_error)
             return
         }
+        val validatedRecording = try {
+            EventAudioInput.validateCaptureFile(cacheDir, audioEventId, recording)
+        } catch (error: EventAudioInputException) {
+            recording.delete()
+            showMessage(
+                if (error.reason == EventAudioInputException.Reason.TOO_SHORT) {
+                    R.string.event_audio_too_short
+                } else {
+                    R.string.event_audio_record_error
+                }
+            )
+            return
+        }
         audioRecordButton?.isEnabled = false
         EventMediaStore.publishFile(
             context = applicationContext,
             eventId = audioEventId,
             type = EventMediaType.AUDIO,
-            file = recording,
+            file = validatedRecording.file,
             authorUid = audioOwnerUid,
             authorName = mediaAuthorName,
             mimeType = "audio/mp4"
         ) { result ->
-            recording.delete()
+            validatedRecording.file.delete()
             audioRecordButton?.isEnabled = true
             handleMediaPublished(EventMediaType.AUDIO, result)
         }
     }
 
     private fun refreshEventAudios(eventId: String, userId: String) {
-        EventMediaStore.list(eventId, EventMediaType.AUDIO) { result ->
+        EventMediaStore.list(applicationContext, eventId, EventMediaType.AUDIO) { result ->
             if (isFinishing || isDestroyed) return@list
             val container = eventAudiosContainer ?: return@list
             val audios = result.getOrNull().orEmpty()
@@ -874,7 +874,7 @@ class EventDetailActivity : AppCompatActivity() {
             refreshEventAudios(eventId, userId)
             true
         }
-        EventMediaStore.downloadUrl(audio) { result ->
+        EventMediaStore.downloadUrl(applicationContext, audio) { result ->
             if (audioPlayer !== player || currentlyPlayingAudioId != audio.id) return@downloadUrl
             val uri = result.getOrNull()
             if (uri == null) {
@@ -988,49 +988,17 @@ class EventDetailActivity : AppCompatActivity() {
                 }
             }
         }.onFailure { error ->
-            showMessage(mediaPublishErrorMessage(error))
+            Log.e("CampusHubLocalMedia", "Falha ao salvar mídia no aparelho", error)
+            showMessage(when (type) {
+                EventMediaType.PHOTO -> R.string.event_photo_save_error
+                EventMediaType.AUDIO -> R.string.event_audio_save_error
+                EventMediaType.VIDEO -> R.string.event_video_save_error
+            })
         }
-    }
-
-    private fun mediaPublishErrorMessage(error: Throwable): Int {
-        val causes = generateSequence(error) { it.cause }.toList()
-        val storageError = causes.filterIsInstance<StorageException>().firstOrNull()
-        val firestoreError = causes.filterIsInstance<FirebaseFirestoreException>().firstOrNull()
-        val publishError = causes.filterIsInstance<EventMediaPublishException>().firstOrNull()
-        Log.e(
-            "CampusHubMedia",
-            "Falha ao publicar mídia na etapa ${publishError?.stage ?: "desconhecida"}; " +
-                "storageCode=${storageError?.errorCode ?: "none"}; " +
-                "firestoreCode=${firestoreError?.code?.name ?: "none"}",
-            error
-        )
-
-        storageError?.let {
-            return when (it.errorCode) {
-                StorageException.ERROR_QUOTA_EXCEEDED -> R.string.event_media_publish_quota_error
-                StorageException.ERROR_BUCKET_NOT_FOUND,
-                StorageException.ERROR_PROJECT_NOT_FOUND -> R.string.event_media_publish_bucket_error
-                StorageException.ERROR_NOT_AUTHORIZED -> R.string.event_media_publish_permission_error
-                StorageException.ERROR_NOT_AUTHENTICATED -> R.string.event_media_publish_auth_error
-                StorageException.ERROR_RETRY_LIMIT_EXCEEDED -> R.string.event_media_publish_network_error
-                else -> if (causes.any { cause -> cause is FirebaseNetworkException }) {
-                    R.string.event_media_publish_network_error
-                } else {
-                    R.string.event_media_publish_error
-                }
-            }
-        }
-        if (firestoreError?.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
-            return R.string.event_media_publish_permission_error
-        }
-        if (causes.any { it is FirebaseNetworkException }) {
-            return R.string.event_media_publish_network_error
-        }
-        return R.string.event_media_publish_error
     }
 
     private fun refreshEventPhotos(eventId: String) {
-        EventMediaStore.list(eventId, EventMediaType.PHOTO) { result ->
+        EventMediaStore.list(applicationContext, eventId, EventMediaType.PHOTO) { result ->
             if (isFinishing || isDestroyed) return@list
             result.onSuccess { photos ->
                 eventPhotosAdapter?.submitPhotos(photos)
@@ -1060,7 +1028,7 @@ class EventDetailActivity : AppCompatActivity() {
         if (media.type == EventMediaType.AUDIO && currentlyPlayingAudioId == media.id) {
             stopAudioPlayback(refresh = false)
         }
-        EventMediaStore.delete(media, mediaOwnerUid) { result ->
+        EventMediaStore.delete(applicationContext, media, mediaOwnerUid) { result ->
             deletingMediaIds -= media.id
             if (isFinishing || isDestroyed) return@delete
             result.onSuccess {

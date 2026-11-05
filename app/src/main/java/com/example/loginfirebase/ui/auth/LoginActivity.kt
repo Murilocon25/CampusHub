@@ -32,22 +32,26 @@ class LoginActivity : AppCompatActivity() {
         val progressBar = findViewById<ProgressBar>(R.id.progressBar)
 
         btnLogin.setOnClickListener {
-            val emailTexto = email.text.toString().trim()
-            val senhaTexto = senha.text.toString().trim()
-
-            if (emailTexto.isEmpty() || senhaTexto.isEmpty()) {
-                findViewById<View>(android.R.id.content).showCampusSnackbar(R.string.erro_campos_vazios)
-                return@setOnClickListener
-            }
-            if (!Patterns.EMAIL_ADDRESS.matcher(emailTexto).matches()) {
-                email.error = getString(R.string.email_invalid)
-                return@setOnClickListener
+            val credentials = when (val validation = validateLoginInput(
+                emailInput = email.text.toString(),
+                passwordInput = senha.text.toString(),
+                isValidEmail = { Patterns.EMAIL_ADDRESS.matcher(it).matches() }
+            )) {
+                LoginInputValidation.MissingFields -> {
+                    findViewById<View>(android.R.id.content).showCampusSnackbar(R.string.erro_campos_vazios)
+                    return@setOnClickListener
+                }
+                is LoginInputValidation.InvalidEmail -> {
+                    email.error = getString(R.string.email_invalid)
+                    return@setOnClickListener
+                }
+                is LoginInputValidation.Valid -> validation
             }
 
             progressBar.visibility = View.VISIBLE
             btnLogin.isEnabled = false
 
-            authRepository.signIn(emailTexto, senhaTexto)
+            authRepository.signIn(credentials.email, credentials.password)
                 .addOnCompleteListener { task ->
                     progressBar.visibility = View.GONE
                     btnLogin.isEnabled = true

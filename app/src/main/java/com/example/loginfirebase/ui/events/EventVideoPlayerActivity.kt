@@ -111,14 +111,14 @@ class EventVideoPlayerActivity : AppCompatActivity() {
     }
 
     private fun loadVideo(eventId: String, videoId: String) {
-        EventMediaStore.get(eventId, videoId) { result ->
+        EventMediaStore.get(applicationContext, eventId, videoId) { result ->
             if (isFinishing || isDestroyed) return@get
             val media = result.getOrNull()
             if (media == null || media.type != EventMediaType.VIDEO) {
                 finishWithError(R.string.event_video_not_found)
                 return@get
             }
-            EventMediaStore.downloadUrl(media) { urlResult ->
+            EventMediaStore.downloadUrl(applicationContext, media) { urlResult ->
                 if (isFinishing || isDestroyed) return@downloadUrl
                 val uri: Uri? = urlResult.getOrNull()
                 if (uri == null) finishWithError(R.string.event_video_play_error)

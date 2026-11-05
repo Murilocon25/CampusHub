@@ -109,7 +109,7 @@ class EventPhotoAdapter(
         } catch (_: Exception) {
             return
         }
-        EventMediaStore.downloadToFile(photo, thumbnailFile) { result ->
+        EventMediaStore.downloadToFile(context, photo, thumbnailFile) { result ->
             if (result.isFailure) {
                 thumbnailFile.delete()
                 return@downloadToFile
