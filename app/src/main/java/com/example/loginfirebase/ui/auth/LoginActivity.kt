@@ -71,14 +71,19 @@ class LoginActivity : AppCompatActivity() {
         }
 
         txtRecuperarSenha.setOnClickListener {
-            val endereco = email.text.toString().trim()
-            if (endereco.isBlank()) {
-                email.error = getString(R.string.reset_email_prompt)
-                return@setOnClickListener
+            val validation = validatePasswordResetEmail(email.text.toString()) {
+                Patterns.EMAIL_ADDRESS.matcher(it).matches()
             }
-            if (!Patterns.EMAIL_ADDRESS.matcher(endereco).matches()) {
-                email.error = getString(R.string.email_invalid)
-                return@setOnClickListener
+            val endereco = when (validation) {
+                PasswordResetEmailValidation.MissingEmail -> {
+                    email.error = getString(R.string.reset_email_prompt)
+                    return@setOnClickListener
+                }
+                is PasswordResetEmailValidation.InvalidEmail -> {
+                    email.error = getString(R.string.email_invalid)
+                    return@setOnClickListener
+                }
+                is PasswordResetEmailValidation.Valid -> validation.email
             }
 
             authRepository.sendPasswordReset(endereco).addOnCompleteListener { task ->
