@@ -33,34 +33,36 @@ class RegisterActivity : AppCompatActivity() {
         val progressBar = findViewById<ProgressBar>(R.id.progressBarCadastro)
 
         btnCadastrar.setOnClickListener {
-            val emailTexto = email.text.toString().trim()
-            val senhaTexto = senha.text.toString().trim()
-            val confirmarTexto = confirmarSenha.text.toString().trim()
-
-            if (emailTexto.isEmpty() || senhaTexto.isEmpty() || confirmarTexto.isEmpty()) {
-                findViewById<View>(android.R.id.content).showCampusSnackbar(R.string.erro_campos_vazios)
-                return@setOnClickListener
-            }
-
-            if (!Patterns.EMAIL_ADDRESS.matcher(emailTexto).matches()) {
-                email.error = getString(R.string.email_invalid)
-                return@setOnClickListener
-            }
-
-            if (senhaTexto.length < 6) {
-                senha.error = getString(R.string.password_too_short)
-                return@setOnClickListener
-            }
-
-            if (senhaTexto != confirmarTexto) {
-                confirmarSenha.error = getString(R.string.erro_senhas_diferentes)
-                return@setOnClickListener
+            val validation = validateRegisterInput(
+                emailInput = email.text.toString(),
+                passwordInput = senha.text.toString(),
+                confirmationInput = confirmarSenha.text.toString(),
+                isValidEmail = { Patterns.EMAIL_ADDRESS.matcher(it).matches() }
+            )
+            val credentials = when (validation) {
+                RegisterInputValidation.MissingFields -> {
+                    findViewById<View>(android.R.id.content).showCampusSnackbar(R.string.erro_campos_vazios)
+                    return@setOnClickListener
+                }
+                is RegisterInputValidation.InvalidEmail -> {
+                    email.error = getString(R.string.email_invalid)
+                    return@setOnClickListener
+                }
+                RegisterInputValidation.PasswordTooShort -> {
+                    senha.error = getString(R.string.password_too_short)
+                    return@setOnClickListener
+                }
+                RegisterInputValidation.PasswordMismatch -> {
+                    confirmarSenha.error = getString(R.string.erro_senhas_diferentes)
+                    return@setOnClickListener
+                }
+                is RegisterInputValidation.Valid -> validation
             }
 
             progressBar.visibility = View.VISIBLE
             btnCadastrar.isEnabled = false
 
-            authRepository.register(emailTexto, senhaTexto)
+            authRepository.register(credentials.email, credentials.password)
                 .addOnCompleteListener { task ->
                     progressBar.visibility = View.GONE
                     btnCadastrar.isEnabled = true
