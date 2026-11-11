@@ -13,7 +13,13 @@ import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.Timestamp
 import com.google.android.gms.tasks.Task
 
-class EventRepository {
+interface EventListDataSource {
+    fun getEvents(onResult: (Result<List<CampusEvent>>) -> Unit)
+
+    fun getUserEvents(uid: String, collection: String, onResult: (Result<List<CampusEvent>>) -> Unit)
+}
+
+class EventRepository : EventListDataSource {
     private val db get() = FirebaseFirestoreProvider.db
 
     private fun event(eventId: String) = db.collection("events").document(eventId)
@@ -99,7 +105,7 @@ class EventRepository {
             "updatedAt" to FieldValue.serverTimestamp()
         ))
 
-    fun getEvents(onResult: (Result<List<CampusEvent>>) -> Unit) {
+    override fun getEvents(onResult: (Result<List<CampusEvent>>) -> Unit) {
         db.collection("events").get()
             .addOnSuccessListener { snapshot ->
                 val manuallyCreatedEvents = snapshot.documents
@@ -110,7 +116,7 @@ class EventRepository {
             .addOnFailureListener { onResult(Result.failure(it)) }
     }
 
-    fun getUserEvents(uid: String, collection: String, onResult: (Result<List<CampusEvent>>) -> Unit) {
+    override fun getUserEvents(uid: String, collection: String, onResult: (Result<List<CampusEvent>>) -> Unit) {
         db.collection("users").document(uid).collection(collection).get()
             .addOnSuccessListener { snapshot ->
                 val eventIds = snapshot.documents.map { it.id }

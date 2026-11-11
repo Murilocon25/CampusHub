@@ -148,18 +148,20 @@ class EventsFragment : Fragment(R.layout.fragment_events) {
     private fun renderEvents() {
         if (!isAdded || !::adapter.isInitialized || !::stateView.isInitialized) return
         val all = getString(R.string.filter_all)
-        val selectedCategory = category.findViewById<Chip>(category.checkedChipId)?.text?.toString() ?: all
+        val selectedCategory = category.findViewById<Chip>(category.checkedChipId)
+            ?.text?.toString()?.takeUnless { it == all }
         val selectedStatus = status.findViewById<Chip>(status.checkedChipId)?.text?.toString() ?: all
-        val filtered = allEvents.filter { event ->
-            val matchesText = event.title.contains(search.text?.toString().orEmpty().trim(), ignoreCase = true)
-            val matchesCategory = selectedCategory == all || selectedCategory == event.category
-            val matchesStatus = when (selectedStatus) {
-                getString(R.string.event_status_upcoming_filter) -> !event.hasEnded()
-                getString(R.string.event_status_ended_filter) -> event.hasEnded()
-                else -> true
-            }
-            matchesText && matchesCategory && matchesStatus
+        val timeFilter = when (selectedStatus) {
+            getString(R.string.event_status_upcoming_filter) -> EventTimeFilter.UPCOMING
+            getString(R.string.event_status_ended_filter) -> EventTimeFilter.ENDED
+            else -> EventTimeFilter.ALL
         }
+        val filtered = filterCampusEvents(
+            events = allEvents,
+            query = search.text?.toString().orEmpty(),
+            selectedCategory = selectedCategory,
+            timeFilter = timeFilter
+        )
         adapter.submitList(filtered)
         if (filtered.isEmpty()) stateView.showMessage(
             getString(R.string.events_filter_empty), getString(R.string.state_clear_filters)

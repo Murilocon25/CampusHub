@@ -3,9 +3,10 @@ package com.example.loginfirebase.ui.events
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.example.loginfirebase.data.repository.EventListDataSource
 import com.example.loginfirebase.data.repository.EventRepository
 
-class UserEventsViewModel(private val repository: EventRepository = EventRepository()) : ViewModel() {
+class UserEventsViewModel(private val repository: EventListDataSource = EventRepository()) : ViewModel() {
     private val mutableState = MutableLiveData<EventListState>()
     val state: LiveData<EventListState> = mutableState
 
