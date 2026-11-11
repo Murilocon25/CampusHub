@@ -2,6 +2,7 @@ package com.example.loginfirebase.data.repository
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 
 interface UserProfileRepository {
@@ -16,8 +17,11 @@ interface UserProfileRepository {
     )
 }
 
-class UserRepository : UserProfileRepository {
-    private val db get() = FirebaseFirestoreProvider.db
+class UserRepository(
+    private val firestore: FirebaseFirestore? = null,
+    private val auth: FirebaseAuth? = null
+) : UserProfileRepository {
+    private val db get() = firestore ?: FirebaseFirestoreProvider.db
 
     override fun loadProfile(uid: String, onResult: (Result<UserProfile>) -> Unit) {
         db.collection("users").document(uid).get()
@@ -38,7 +42,7 @@ class UserRepository : UserProfileRepository {
         campus: String,
         onResult: (Result<Unit>) -> Unit
     ) {
-        val user = FirebaseAuth.getInstance().currentUser
+        val user = (auth ?: FirebaseAuth.getInstance()).currentUser
         val updateName = user?.takeIf { it.uid == uid }?.updateProfile(
             UserProfileChangeRequest.Builder().setDisplayName(name).build()
         )

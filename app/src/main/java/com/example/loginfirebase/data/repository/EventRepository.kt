@@ -8,6 +8,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.GeoPoint
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.Timestamp
@@ -23,8 +24,10 @@ interface EventDetailDataSource {
     fun loadEvent(eventId: String, onResult: (Result<CampusEvent?>) -> Unit)
 }
 
-class EventRepository : EventListDataSource, EventDetailDataSource {
-    private val db get() = FirebaseFirestoreProvider.db
+class EventRepository(
+    private val firestore: FirebaseFirestore? = null
+) : EventListDataSource, EventDetailDataSource {
+    private val db get() = firestore ?: FirebaseFirestoreProvider.db
 
     private fun event(eventId: String) = db.collection("events").document(eventId)
 
