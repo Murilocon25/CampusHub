@@ -303,8 +303,8 @@ class EventDetailActivity : AppCompatActivity() {
         refreshComments()
 
         commentsSection.addCampusButton(getString(R.string.event_comment_publish)) {
-            val text = commentInput.text?.toString()?.trim().orEmpty()
-            if (text.isBlank() || text.length > 1000) {
+            val text = prepareEventComment(commentInput.text?.toString().orEmpty())
+            if (text == null) {
                 commentInput.error = getString(R.string.event_comment_invalid)
                 return@addCampusButton
             }
@@ -371,7 +371,7 @@ class EventDetailActivity : AppCompatActivity() {
         ratingSection.addView(ratingBar)
         ratingSection.addCampusButton(getString(R.string.event_rating_save)) {
             val score = ratingBar.rating.toInt()
-            if (score !in 1..5) {
+            if (!isValidEventRating(score)) {
                 showMessage(R.string.event_rating_invalid)
                 return@addCampusButton
             }
@@ -394,31 +394,44 @@ class EventDetailActivity : AppCompatActivity() {
         registrationBar.addView(registrationButton, FrameLayout.LayoutParams(-1, -2))
         eventRepository.getRegistration(userId, event.id)
             .addOnSuccessListener { snapshot ->
-                var isRegistered = snapshot.exists()
+                var registrationState = EventRegistrationState(snapshot.exists())
                 fun updateRegistrationUi() {
-                    registrationButton.setText(if (isRegistered) R.string.registration_cancel else R.string.registration_join)
-                    ratingSection.visibility = if (isRegistered && event.hasEnded()) View.VISIBLE else View.GONE
+                    registrationButton.setText(
+                        if (registrationState.isRegistered) R.string.registration_cancel else R.string.registration_join
+                    )
+                    ratingSection.visibility = if (registrationState.shouldShowRating(event.hasEnded())) {
+                        View.VISIBLE
+                    } else {
+                        View.GONE
+                    }
                 }
                 updateRegistrationUi()
-                if (isRegistered && event.hasEnded()) {
+                if (registrationState.shouldShowRating(event.hasEnded())) {
                     eventRepository.getRating(userId, event.id).addOnSuccessListener { saved ->
                         saved.getLong("score")?.let { ratingBar.rating = it.toFloat() }
                     }
                 }
                 registrationButton.setOnClickListener {
-                    val update = if (isRegistered) eventRepository.cancelRegistration(userId, event.id)
+                    val update = if (registrationState.isRegistered) eventRepository.cancelRegistration(userId, event.id)
                     else eventRepository.register(userId, event)
                     update.addOnSuccessListener {
-                        isRegistered = !isRegistered
+                        registrationState = registrationState.afterToggleUpdate(succeeded = true)
                         updateRegistrationUi()
-                        if (isRegistered && event.hasEnded()) {
+                        if (registrationState.shouldShowRating(event.hasEnded())) {
                             eventRepository.getRating(userId, event.id).addOnSuccessListener { saved ->
                                 saved.getLong("score")?.let { ratingBar.rating = it.toFloat() }
                             }
                         }
-                        showMessage(if (isRegistered) R.string.registration_confirmed else R.string.registration_cancelled)
+                        showMessage(
+                            if (registrationState.isRegistered) R.string.registration_confirmed
+                            else R.string.registration_cancelled
+                        )
                     }.addOnFailureListener {
-                        showMessage(if (isRegistered) R.string.registration_cancel_error else R.string.registration_error)
+                        registrationState = registrationState.afterToggleUpdate(succeeded = false)
+                        showMessage(
+                            if (registrationState.isRegistered) R.string.registration_cancel_error
+                            else R.string.registration_error
+                        )
                     }
                 }
             }
@@ -1092,8 +1105,8 @@ class EventDetailActivity : AppCompatActivity() {
             .setView(inputLayout)
             .setNegativeButton(getString(R.string.event_cancel), null)
             .setPositiveButton(getString(R.string.event_save)) { _, _ ->
-                val text = input.text?.toString()?.trim().orEmpty()
-                if (text.isBlank() || text.length > 1000) {
+                val text = prepareEventComment(input.text?.toString().orEmpty())
+                if (text == null) {
                     showMessage(R.string.event_comment_invalid)
                 } else {
                     eventRepository.updateComment(eventId, commentId, text)

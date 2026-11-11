@@ -19,12 +19,25 @@ interface EventListDataSource {
     fun getUserEvents(uid: String, collection: String, onResult: (Result<List<CampusEvent>>) -> Unit)
 }
 
-class EventRepository : EventListDataSource {
+interface EventDetailDataSource {
+    fun loadEvent(eventId: String, onResult: (Result<CampusEvent?>) -> Unit)
+}
+
+class EventRepository : EventListDataSource, EventDetailDataSource {
     private val db get() = FirebaseFirestoreProvider.db
 
     private fun event(eventId: String) = db.collection("events").document(eventId)
 
     fun getEvent(eventId: String): Task<DocumentSnapshot> = event(eventId).get()
+
+    override fun loadEvent(eventId: String, onResult: (Result<CampusEvent?>) -> Unit) {
+        getEvent(eventId)
+            .addOnSuccessListener { snapshot ->
+                val campusEvent = if (snapshot.exists()) snapshot.toCampusEvent() else null
+                onResult(Result.success(campusEvent))
+            }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
 
     fun createEvent(
         title: String,
