@@ -121,10 +121,8 @@ class EventRepository : EventListDataSource, EventDetailDataSource {
     override fun getEvents(onResult: (Result<List<CampusEvent>>) -> Unit) {
         db.collection("events").get()
             .addOnSuccessListener { snapshot ->
-                val manuallyCreatedEvents = snapshot.documents
-                    .map { it.toCampusEvent() }
-                    .filter { it.creatorUid.isNotBlank() }
-                onResult(Result.success(manuallyCreatedEvents))
+                val events = snapshot.documents.map { it.toCampusEvent() }
+                onResult(Result.success(manuallyCreatedEvents(events)))
             }
             .addOnFailureListener { onResult(Result.failure(it)) }
     }
@@ -137,14 +135,13 @@ class EventRepository : EventListDataSource, EventDetailDataSource {
                     onResult(Result.success(emptyList()))
                     return@addOnSuccessListener
                 }
-                val queries = eventIds.chunked(30).map { ids ->
+                val queries = batchEventIds(eventIds).map { ids ->
                     db.collection("events").whereIn(FieldPath.documentId(), ids).get()
                 }
                 Tasks.whenAllSuccess<QuerySnapshot>(queries)
                     .addOnSuccessListener { batches ->
-                        val eventsById = batches.flatMap { it.documents }
-                            .associate { document -> document.id to document.toCampusEvent() }
-                        onResult(Result.success(eventIds.mapNotNull(eventsById::get)))
+                        val events = batches.flatMap { it.documents }.map { it.toCampusEvent() }
+                        onResult(Result.success(eventsInRequestedOrder(eventIds, events)))
                     }
                     .addOnFailureListener { onResult(Result.failure(it)) }
             }

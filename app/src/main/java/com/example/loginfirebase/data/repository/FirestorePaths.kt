@@ -4,7 +4,11 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.FirebaseFirestore
 
 fun FirebaseFirestore.registrations(uid: String): CollectionReference =
-    collection("users").document(uid).collection("registrations")
+    collection(registrationsPath(uid))
 
 fun FirebaseFirestore.favorites(uid: String): CollectionReference =
-    collection("users").document(uid).collection("favorites")
+    collection(favoritesPath(uid))
+
+internal fun registrationsPath(uid: String): String = "users/$uid/registrations"
+
+internal fun favoritesPath(uid: String): String = "users/$uid/favorites"

@@ -22,10 +22,10 @@ class UserRepository : UserProfileRepository {
     override fun loadProfile(uid: String, onResult: (Result<UserProfile>) -> Unit) {
         db.collection("users").document(uid).get()
             .addOnSuccessListener { snapshot ->
-                onResult(Result.success(UserProfile(
-                    name = snapshot.getString("name").orEmpty(),
-                    course = snapshot.getString("course").orEmpty(),
-                    campus = snapshot.getString("campus").orEmpty()
+                onResult(Result.success(mapUserProfileFields(
+                    name = snapshot.getString("name"),
+                    course = snapshot.getString("course"),
+                    campus = snapshot.getString("campus")
                 )))
             }
             .addOnFailureListener { onResult(Result.failure(it)) }

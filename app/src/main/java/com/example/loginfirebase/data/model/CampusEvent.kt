@@ -4,6 +4,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.GeoPoint
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.TimeZone
 
 data class CampusEvent(
     val id: String,
@@ -20,7 +21,11 @@ data class CampusEvent(
     fun hasEnded(nowMillis: Long = System.currentTimeMillis()): Boolean =
         (endAt ?: startAt)?.toDate()?.time?.let { it <= nowMillis } ?: false
 
-    fun displayDate(locale: Locale = Locale.forLanguageTag("pt-BR")): String =
-        startAt?.toDate()?.let { SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", locale).format(it) }
+    fun displayDate(
+        locale: Locale = Locale.forLanguageTag("pt-BR"),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): String = startAt?.toDate()?.let {
+        SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", locale).apply { this.timeZone = timeZone }.format(it)
+    }
             ?: date
 }
