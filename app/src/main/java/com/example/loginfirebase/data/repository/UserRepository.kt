@@ -4,10 +4,22 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.SetOptions
 
-class UserRepository {
+interface UserProfileRepository {
+    fun loadProfile(uid: String, onResult: (Result<UserProfile>) -> Unit)
+
+    fun saveProfile(
+        uid: String,
+        name: String,
+        course: String,
+        campus: String,
+        onResult: (Result<Unit>) -> Unit
+    )
+}
+
+class UserRepository : UserProfileRepository {
     private val db get() = FirebaseFirestoreProvider.db
 
-    fun loadProfile(uid: String, onResult: (Result<UserProfile>) -> Unit) {
+    override fun loadProfile(uid: String, onResult: (Result<UserProfile>) -> Unit) {
         db.collection("users").document(uid).get()
             .addOnSuccessListener { snapshot ->
                 onResult(Result.success(UserProfile(
@@ -19,7 +31,7 @@ class UserRepository {
             .addOnFailureListener { onResult(Result.failure(it)) }
     }
 
-    fun saveProfile(
+    override fun saveProfile(
         uid: String,
         name: String,
         course: String,

@@ -30,11 +30,13 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         val avatar = view.findViewById<TextView>(R.id.profile_avatar)
         val courseBadge = view.findViewById<Chip>(R.id.profile_course_badge)
         val campusBadge = view.findViewById<Chip>(R.id.profile_campus_badge)
-        val fallbackName = user.displayName?.takeIf(String::isNotBlank)
-            ?: user.email?.substringBefore('@')?.takeIf(String::isNotBlank)
-            ?: getString(R.string.profile_student_fallback)
+        val fallbackName = profileDisplayName(
+            user.displayName,
+            user.email,
+            getString(R.string.profile_student_fallback)
+        )
         displayName.text = fallbackName
-        avatar.text = initials(fallbackName)
+        avatar.text = profileInitials(fallbackName)
         val state = view.findViewById<CampusStateView>(R.id.profile_state)
         val name = view.findViewById<TextInputEditText>(R.id.profile_name)
         val course = view.findViewById<TextInputEditText>(R.id.profile_course)
@@ -53,7 +55,7 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
                     val profileName = screenState.profile.name.ifBlank { fallbackName }
                     name.setText(profileName)
                     displayName.text = profileName
-                    avatar.text = initials(profileName)
+                    avatar.text = profileInitials(profileName)
                     course.setText(screenState.profile.course)
                     campus.setText(screenState.profile.campus)
                     courseBadge.isVisible = screenState.profile.course.isNotBlank()
@@ -78,16 +80,16 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         }
 
         view.findViewById<MaterialButton>(R.id.profile_save).setOnClickListener {
-            val nameText = name.text?.toString()?.trim().orEmpty()
-            if (nameText.isBlank()) {
+            val profile = profileForSave(
+                nameInput = name.text?.toString().orEmpty(),
+                courseInput = course.text?.toString().orEmpty(),
+                campusInput = campus.text?.toString().orEmpty()
+            )
+            if (profile == null) {
                 name.error = getString(R.string.profile_name_required)
                 return@setOnClickListener
             }
-            viewModel.save(user.uid, UserProfile(
-                nameText,
-                course.text?.toString()?.trim().orEmpty(),
-                campus.text?.toString()?.trim().orEmpty()
-            ))
+            viewModel.save(user.uid, profile)
         }
         view.findViewById<MaterialButton>(R.id.profile_sign_out).setOnClickListener {
             authRepository.signOut()
@@ -99,11 +101,4 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         viewModel.load(user.uid)
     }
 
-    private fun initials(name: String): String = name.trim()
-        .split(Regex("\\s+"))
-        .filter(String::isNotBlank)
-        .take(2)
-        .mapNotNull { it.firstOrNull()?.uppercase() }
-        .joinToString("")
-        .ifBlank { "CH" }
 }

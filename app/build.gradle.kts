@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.okhttp)
 
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.arch.core.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

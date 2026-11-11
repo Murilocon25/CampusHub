@@ -4,9 +4,10 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.example.loginfirebase.data.repository.UserProfile
+import com.example.loginfirebase.data.repository.UserProfileRepository
 import com.example.loginfirebase.data.repository.UserRepository
 
-class ProfileViewModel(private val repository: UserRepository = UserRepository()) : ViewModel() {
+class ProfileViewModel(private val repository: UserProfileRepository = UserRepository()) : ViewModel() {
     private val mutableState = MutableLiveData<ProfileState>()
     val state: LiveData<ProfileState> = mutableState
     private val mutableSaveState = MutableLiveData<ProfileSaveState>(ProfileSaveState.Idle)
