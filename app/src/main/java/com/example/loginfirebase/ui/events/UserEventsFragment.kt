@@ -14,12 +14,18 @@ import com.example.loginfirebase.data.model.CampusEvent
 import com.example.loginfirebase.ui.common.CampusStateView
 import com.example.loginfirebase.ui.common.CampusSkeletonListView
 import com.example.loginfirebase.data.repository.AuthRepository
+import com.example.loginfirebase.data.repository.EventRepository
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.android.material.bottomnavigation.BottomNavigationView
 
 abstract class UserEventsFragment : Fragment(R.layout.fragment_user_events) {
     protected abstract val titleResource: Int
     protected abstract val subtitleResource: Int
     protected abstract val collection: String
+    private var registrationListener: ListenerRegistration? = null
+    private var displayedEvents: List<CampusEvent> = emptyList()
+    private var userEventsViewModel: UserEventsViewModel? = null
+    private var currentUid: String? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -34,6 +40,8 @@ abstract class UserEventsFragment : Fragment(R.layout.fragment_user_events) {
 
         val viewModel = ViewModelProvider(this)[UserEventsViewModel::class.java]
         val uid = AuthRepository().currentUser?.uid
+        userEventsViewModel = viewModel
+        currentUid = uid
         viewModel.state.observe(viewLifecycleOwner) { screenState ->
             when (screenState) {
                 EventListState.Loading -> {
@@ -66,6 +74,7 @@ abstract class UserEventsFragment : Fragment(R.layout.fragment_user_events) {
                     loadingSkeleton.isVisible = false
                     state.hideMessage()
                     list.isVisible = true
+                    displayedEvents = screenState.events
                     adapter.submitList(screenState.events)
                 }
             }
@@ -76,7 +85,33 @@ abstract class UserEventsFragment : Fragment(R.layout.fragment_user_events) {
             list.isVisible = false
         } else {
             viewModel.load(uid, collection)
+            if (collection == "registrations") {
+                registrationListener?.remove()
+                registrationListener = EventRepository().observeUserRegistrations(uid) { result ->
+                    result.onSuccess { snapshot ->
+                        val statusById = snapshot.documents.mapNotNull { document ->
+                            document.getString("status")?.let { document.id to it }
+                        }.toMap()
+                        adapter.setRegistrationStatuses(statusById)
+                        val activeEvents = displayedEvents.filter { event ->
+                            statusById[event.id] in setOf("CONFIRMADA", "LISTA_ESPERA", "AGUARDANDO_CONFIRMACAO", "PRESENTE")
+                        }
+                        adapter.submitList(activeEvents)
+                    }
+                }
+            }
         }
+    }
+
+    override fun onDestroyView() {
+        registrationListener?.remove()
+        registrationListener = null
+        super.onDestroyView()
+    }
+
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (!hidden) currentUid?.let { uid -> userEventsViewModel?.load(uid, collection) }
     }
 
     private fun openEvent(event: CampusEvent) {

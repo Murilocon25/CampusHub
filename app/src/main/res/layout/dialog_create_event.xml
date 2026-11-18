@@ -16,6 +16,7 @@
         android:paddingEnd="@dimen/space_4"
         android:paddingBottom="@dimen/space_2">
         <TextView
+            android:id="@+id/create_event_dialog_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -77,6 +78,22 @@
                     android:layout_height="wrap_content"
                     android:inputType="textCapSentences"
                     android:maxLength="80"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.CampusHub.EditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:hint="@string/create_event_capacity_hint"
+                app:boxBackgroundMode="outline">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/create_event_capacity"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLength="5"
                     android:maxLines="1" />
             </com.google.android.material.textfield.TextInputLayout>
 
@@ -168,6 +185,23 @@
                 android:paddingBottom="@dimen/space_2"
                 android:text="@string/create_event_location_required"
                 android:textAppearance="@style/TextAppearance.CampusHub.Caption" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.CampusHub.EditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:hint="@string/create_event_cover_hint"
+                app:boxBackgroundMode="outline"
+                app:helperText="@string/create_event_cover_helper">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/create_event_cover_url"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textUri"
+                    android:maxLength="2048"
+                    android:maxLines="2" />
+            </com.google.android.material.textfield.TextInputLayout>
 
             <TextView
                 android:layout_width="match_parent"

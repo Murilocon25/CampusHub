@@ -58,9 +58,23 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/space_1"
-                    android:layout_marginBottom="@dimen/space_5"
+                    android:layout_marginBottom="@dimen/space_3"
                     android:text="@string/register_subtitle"
                     android:textAppearance="@style/TextAppearance.CampusHub.Body" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/space_4"
+                    android:text="@string/register_role_prompt"
+                    android:textAppearance="@style/TextAppearance.CampusHub.Label" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/space_4"
+                    android:text="@string/register_role_help"
+                    android:textAppearance="@style/TextAppearance.CampusHub.Caption" />
 
                 <com.google.android.material.textfield.TextInputLayout
                     style="@style/Widget.CampusHub.EditText"

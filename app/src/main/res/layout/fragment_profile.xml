@@ -58,6 +58,12 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/space_1"
                         android:textAppearance="@style/TextAppearance.CampusHub.Caption" />
+                    <TextView
+                        android:id="@+id/profile_role"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_1"
+                        android:textAppearance="@style/TextAppearance.CampusHub.Label" />
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

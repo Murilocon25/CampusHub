@@ -1,0 +1,14 @@
+appId: com.example.loginfirebase
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "com.example.loginfirebase:id/editEmail"
+- inputText: ${LOGIN_EMAIL}
+- tapOn:
+    id: "com.example.loginfirebase:id/editSenha"
+- inputText: ${LOGIN_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "com.example.loginfirebase:id/btnLogin"
+- assertVisible: "Eventos do campus"

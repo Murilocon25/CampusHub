@@ -1,0 +1,14 @@
+appId: com.example.loginfirebase
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "com.example.loginfirebase:id/editEmail"
+- inputText: "email-invalido"
+- tapOn:
+    id: "com.example.loginfirebase:id/editSenha"
+- inputText: "senha-teste-123"
+- hideKeyboard
+- tapOn:
+    id: "com.example.loginfirebase:id/btnLogin"
+- assertVisible: "Informe um endereço de e-mail válido."

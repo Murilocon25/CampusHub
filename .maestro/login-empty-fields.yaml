@@ -1,0 +1,7 @@
+appId: com.example.loginfirebase
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "com.example.loginfirebase:id/btnLogin"
+- assertVisible: "Preencha todos os campos"
