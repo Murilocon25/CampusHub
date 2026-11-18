@@ -10,6 +10,79 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function isOrganizer(uid) {
+      let userPath = /databases/$(database)/documents/users/$(uid);
+      return signedIn() && exists(userPath) && get(userPath).data.role == 'organizer';
+    }
+
+    function isStudent(uid) {
+      let userPath = /databases/$(database)/documents/users/$(uid);
+      return signedIn() && exists(userPath)
+        && (!('role' in get(userPath).data) || get(userPath).data.role == 'student');
+    }
+
+    function hasActiveRegistration(uid, eventId) {
+      let registrationPath = /databases/$(database)/documents/users/$(uid)/registrations/$(eventId);
+      return owns(uid) && exists(registrationPath)
+        && get(registrationPath).data.status in ['CONFIRMADA', 'LISTA_ESPERA', 'AGUARDANDO_CONFIRMACAO', 'PRESENTE'];
+    }
+
+    function canReadEvent(eventId) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      return signedIn() && exists(eventPath) && (
+        get(eventPath).data.status in ['PUBLISHED', 'ENDED']
+        || (isOrganizer(request.auth.uid) && get(eventPath).data.creatorUid == request.auth.uid)
+        || hasActiveRegistration(request.auth.uid, eventId)
+      );
+    }
+
+    function isPublicEvent(eventId) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      return exists(eventPath)
+        && get(eventPath).data.status in ['PUBLISHED', 'ENDED'];
+    }
+
+    function validCommentAuthorName(authorName) {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      let profileName = exists(userPath) ? get(userPath).data.get('name', '') : '';
+      let authName = request.auth.token.get('name', '');
+      let authEmail = request.auth.token.get('email', '');
+      return authorName is string
+        && authorName.size() >= 1
+        && authorName.size() <= 254
+        && (authorName == profileName
+          || authorName == authName
+          || authorName == authEmail
+          || authorName == 'Aluno');
+    }
+
+    function validComment(data) {
+      return data.keys().hasOnly(['authorUid', 'authorName', 'text', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['authorUid', 'authorName', 'text', 'createdAt', 'updatedAt'])
+        && data.authorUid == request.auth.uid
+        && validCommentAuthorName(data.authorName)
+        && data.text is string
+        && data.text.size() >= 1
+        && data.text.size() <= 1000;
+    }
+
+    function validRating(data, uid) {
+      return data.keys().hasOnly(['userId', 'score', 'updatedAt'])
+        && data.keys().hasAll(['userId', 'score', 'updatedAt'])
+        && data.userId == uid
+        && data.score is int
+        && data.score >= 1
+        && data.score <= 5;
+    }
+
+    function validUserProfile(data) {
+      return data.keys().hasOnly(['name', 'course', 'campus', 'role'])
+        && data.keys().hasAll(['name', 'course', 'campus', 'role'])
+        && data.name is string && data.name.size() <= 120
+        && data.course is string && data.course.size() <= 120
+        && data.campus is string && data.campus.size() <= 120;
+    }
+
     function validEvent(data) {
       return data.creatorUid == request.auth.uid
         && data.title is string && data.title.size() >= 3 && data.title.size() <= 120
@@ -18,37 +91,260 @@ service cloud.firestore {
         && data.description is string && data.description.size() >= 1 && data.description.size() <= 2000
         && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
         && data.startAt is timestamp
-        && data.location is latlng;
+        && data.location is latlng
+        && data.capacity is int && data.capacity >= 1 && data.capacity <= 50000
+        && data.coverImageUrl is string && data.coverImageUrl.size() >= 12 && data.coverImageUrl.size() <= 2048
+        && data.coverImageUrl.matches('^https://[^ ]+$')
+        && data.status in ['DRAFT', 'PUBLISHED', 'ENDED']
+        && data.confirmedCount is int && data.confirmedCount >= 0
+        && data.waitingCount is int && data.waitingCount >= 0
+        && data.reservedCount is int && data.reservedCount >= 0
+        && data.registrationSequence is int && data.registrationSequence >= 0;
+    }
+
+    function validEventPublishTransition() {
+      return signedIn()
+        && isOrganizer(request.auth.uid)
+        && resource.data.creatorUid == request.auth.uid
+        && resource.data.status == 'DRAFT'
+        && validEvent(request.resource.data)
+        && request.resource.data.status == 'PUBLISHED'
+        && request.resource.data.startAt > request.time
+        && request.resource.data.capacity >= request.resource.data.confirmedCount + request.resource.data.reservedCount
+        && request.resource.data.publishedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'publishedAt', 'updatedAt'
+        ]);
+    }
+
+    function validEventEndTransition() {
+      return signedIn()
+        && isOrganizer(request.auth.uid)
+        && resource.data.creatorUid == request.auth.uid
+        && resource.data.status == 'PUBLISHED'
+        && request.resource.data.status == 'ENDED'
+        && request.resource.data.endedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'endedAt', 'updatedAt'
+        ]);
+    }
+
+    function validStudentJoinFlow(eventId, uid) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      let eventBefore = get(eventPath).data;
+      let eventAfter = getAfter(eventPath).data;
+      let eventRegistrationPath = /databases/$(database)/documents/events/$(eventId)/registrations/$(uid);
+      let eventRegistrationAfter = getAfter(eventRegistrationPath).data;
+      let userRegistrationPath = /databases/$(database)/documents/users/$(uid)/registrations/$(eventId);
+      let userRegistrationAfter = getAfter(userRegistrationPath).data;
+      return owns(uid)
+        && isStudent(uid)
+        && eventBefore.status == 'PUBLISHED'
+        && eventBefore.startAt > request.time
+        && eventBefore.waitingCount == 0
+        && eventBefore.reservedCount == 0
+        && eventAfter.status == eventBefore.status
+        && eventAfter.startAt == eventBefore.startAt
+        && eventAfter.creatorUid == eventBefore.creatorUid
+        && eventAfter.capacity == eventBefore.capacity
+        && eventAfter.confirmedCount == eventBefore.confirmedCount + 1
+        && eventAfter.waitingCount == eventBefore.waitingCount
+        && eventAfter.reservedCount == eventBefore.reservedCount
+        && eventAfter.registrationSequence == eventBefore.registrationSequence + 1
+        && eventAfter.confirmedCount + eventAfter.reservedCount <= eventAfter.capacity
+        && eventAfter.updatedAt == request.time
+        && eventAfter.diff(eventBefore).affectedKeys().hasOnly([
+          'confirmedCount', 'registrationSequence', 'updatedAt'
+        ])
+        && eventRegistrationAfter.eventId == eventId
+        && eventRegistrationAfter.userId == uid
+        && eventRegistrationAfter.status == 'CONFIRMADA'
+        && eventRegistrationAfter.queuePosition == eventAfter.registrationSequence
+        && eventRegistrationAfter.registeredAt == request.time
+        && userRegistrationAfter.eventId == eventId
+        && userRegistrationAfter.userId == uid
+        && userRegistrationAfter.status == 'CONFIRMADA'
+        && userRegistrationAfter.registeredAt == request.time
+        && userRegistrationAfter.updatedAt == request.time;
+    }
+
+    function validStudentJoinEventRegistration(data, eventId, uid) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      let eventAfter = getAfter(eventPath).data;
+      let profilePath = /databases/$(database)/documents/users/$(uid);
+      let profileName = get(profilePath).data.get('name', '');
+      let expectedName = profileName is string && profileName.size() > 0 ? profileName : 'Aluno';
+      return data.keys().hasOnly([
+          'eventId', 'eventTitle', 'userId', 'studentName', 'studentEmail', 'recordType', 'status',
+          'queuePosition', 'registeredAt', 'updatedAt', 'confirmationExpiresAt', 'checkedInAt', 'qrTokenHash'
+        ])
+        && data.keys().hasAll([
+          'eventId', 'eventTitle', 'userId', 'studentName', 'studentEmail', 'recordType', 'status',
+          'queuePosition', 'registeredAt', 'updatedAt', 'confirmationExpiresAt', 'checkedInAt', 'qrTokenHash'
+        ])
+        && data.eventId == eventId
+        && data.eventTitle == eventAfter.title
+        && data.userId == uid
+        && data.studentName == expectedName
+        && data.studentEmail == request.auth.token.get('email', '')
+        && data.recordType == 'event'
+        && data.status == 'CONFIRMADA'
+        && data.queuePosition == eventAfter.registrationSequence
+        && data.registeredAt == request.time
+        && data.updatedAt == request.time
+        && data.confirmationExpiresAt == null
+        && data.checkedInAt == null
+        && data.qrTokenHash == null;
+    }
+
+    function validStudentJoinUserRegistration(data, eventId, uid) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      let eventAfter = getAfter(eventPath).data;
+      return data.keys().hasOnly([
+          'eventId', 'eventTitle', 'userId', 'recordType', 'status', 'registeredAt',
+          'confirmationExpiresAt', 'checkedInAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'eventId', 'eventTitle', 'userId', 'recordType', 'status', 'registeredAt',
+          'confirmationExpiresAt', 'checkedInAt', 'updatedAt'
+        ])
+        && data.eventId == eventId
+        && data.eventTitle == eventAfter.title
+        && data.userId == uid
+        && data.recordType == 'user'
+        && data.status == 'CONFIRMADA'
+        && data.registeredAt == request.time
+        && data.confirmationExpiresAt == null
+        && data.checkedInAt == null
+        && data.updatedAt == request.time;
+    }
+
+    function validStudentRegistrationCancellation(eventId, uid) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      let eventBefore = get(eventPath).data;
+      let eventAfter = getAfter(eventPath).data;
+      let eventRegistrationPath = /databases/$(database)/documents/events/$(eventId)/registrations/$(uid);
+      let eventRegistrationBefore = get(eventRegistrationPath).data;
+      let eventRegistrationAfter = getAfter(eventRegistrationPath).data;
+      let userRegistrationPath = /databases/$(database)/documents/users/$(uid)/registrations/$(eventId);
+      let userRegistrationAfter = getAfter(userRegistrationPath).data;
+      return owns(uid)
+        && isStudent(uid)
+        && eventRegistrationBefore.status in ['CONFIRMADA', 'LISTA_ESPERA', 'AGUARDANDO_CONFIRMACAO']
+        && eventRegistrationAfter.status == 'CANCELADA'
+        && eventRegistrationAfter.updatedAt == request.time
+        && userRegistrationAfter.eventId == eventId
+        && userRegistrationAfter.userId == uid
+        && userRegistrationAfter.status == 'CANCELADA'
+        && userRegistrationAfter.updatedAt == request.time
+        && eventAfter.status == eventBefore.status
+        && eventAfter.capacity == eventBefore.capacity
+        && eventAfter.confirmedCount == eventBefore.confirmedCount - (eventRegistrationBefore.status == 'CONFIRMADA' ? 1 : 0)
+        && eventAfter.waitingCount == eventBefore.waitingCount - (eventRegistrationBefore.status == 'LISTA_ESPERA' ? 1 : 0)
+        && eventAfter.reservedCount == eventBefore.reservedCount - (eventRegistrationBefore.status == 'AGUARDANDO_CONFIRMACAO' ? 1 : 0)
+        && eventAfter.confirmedCount >= 0
+        && eventAfter.waitingCount >= 0
+        && eventAfter.reservedCount >= 0
+        && eventAfter.registrationSequence == eventBefore.registrationSequence
+        && eventAfter.updatedAt == request.time
+        && eventAfter.diff(eventBefore).affectedKeys().hasOnly([
+          'confirmedCount', 'waitingCount', 'reservedCount', 'updatedAt'
+        ]);
     }
 
     match /events/{eventId} {
-      allow read: if signedIn();
+      allow read: if signedIn() && (
+        resource.data.status in ['PUBLISHED', 'ENDED']
+        || (isOrganizer(request.auth.uid) && resource.data.creatorUid == request.auth.uid)
+        || hasActiveRegistration(request.auth.uid, eventId)
+      );
       allow create: if signedIn()
+        && isOrganizer(request.auth.uid)
+        && request.resource.data.keys().hasOnly([
+          'title', 'date', 'place', 'description', 'category', 'startAt', 'creatorUid', 'location',
+          'capacity', 'coverImageUrl', 'status', 'confirmedCount', 'waitingCount',
+          'reservedCount', 'registrationSequence', 'createdAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'title', 'date', 'place', 'description', 'category', 'startAt', 'creatorUid', 'location',
+          'capacity', 'coverImageUrl', 'status', 'confirmedCount', 'waitingCount',
+          'reservedCount', 'registrationSequence', 'createdAt'
+        ])
         && validEvent(request.resource.data)
+        && request.resource.data.status == 'DRAFT'
+        && request.resource.data.confirmedCount == 0
+        && request.resource.data.waitingCount == 0
+        && request.resource.data.reservedCount == 0
+        && request.resource.data.registrationSequence == 0
         && request.resource.data.createdAt == request.time;
-      allow update: if owns(resource.data.creatorUid)
-        && validEvent(request.resource.data)
-        && request.resource.data.creatorUid == resource.data.creatorUid
-        && request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if owns(resource.data.creatorUid);
+      allow update: if signedIn() && (
+          (isOrganizer(request.auth.uid)
+            && resource.data.creatorUid == request.auth.uid
+            && validEvent(request.resource.data)
+            && request.resource.data.creatorUid == resource.data.creatorUid
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.confirmedCount == resource.data.confirmedCount
+            && request.resource.data.waitingCount == resource.data.waitingCount
+            && request.resource.data.reservedCount == resource.data.reservedCount
+            && request.resource.data.registrationSequence == resource.data.registrationSequence
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'date', 'place', 'description', 'category', 'startAt', 'location', 'capacity', 'coverImageUrl'
+            ])
+            && request.resource.data.capacity >= request.resource.data.confirmedCount + request.resource.data.reservedCount)
+          || validEventPublishTransition()
+          || validEventEndTransition()
+          || validStudentJoinFlow(eventId, request.auth.uid)
+          || validStudentRegistrationCancellation(eventId, request.auth.uid)
+        );
+      allow delete: if false;
+
+      match /registrations/{uid} {
+        allow read: if (owns(uid) && isStudent(uid))
+          || (isOrganizer(request.auth.uid)
+            && get(/databases/$(database)/documents/events/$(eventId)).data.creatorUid == request.auth.uid);
+        allow create: if owns(uid)
+          && isStudent(uid)
+          && validStudentJoinEventRegistration(request.resource.data, eventId, uid)
+          && validStudentJoinFlow(eventId, uid);
+        allow update: if owns(uid)
+          && isStudent(uid)
+          && ((resource.data.status == 'CANCELADA'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'eventId', 'eventTitle', 'userId', 'studentName', 'studentEmail', 'recordType', 'status',
+                'queuePosition', 'registeredAt', 'updatedAt', 'confirmationExpiresAt', 'checkedInAt',
+                'qrTokenHash', 'cancellationReason'
+              ])
+              && validStudentJoinEventRegistration(request.resource.data, eventId, uid)
+              && validStudentJoinFlow(eventId, uid))
+            || (request.resource.data.status == 'CANCELADA'
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.confirmationExpiresAt == null
+              && request.resource.data.qrTokenHash == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status', 'cancellationReason', 'confirmationExpiresAt', 'qrTokenHash', 'updatedAt'
+              ])
+              && validStudentRegistrationCancellation(eventId, uid)));
+        allow delete: if false;
+      }
 
       match /comments/{commentId} {
-        allow read: if signedIn();
-        allow create: if signedIn()
-          && request.resource.data.authorUid == request.auth.uid
-          && request.resource.data.text is string
-          && request.resource.data.text.size() >= 1
-          && request.resource.data.text.size() <= 1000
+        allow read: if canReadEvent(eventId);
+        allow create: if canReadEvent(eventId)
+          && validComment(request.resource.data)
           && request.resource.data.createdAt == request.time
           && request.resource.data.updatedAt == request.time;
-        allow update: if owns(resource.data.authorUid)
+        allow update: if canReadEvent(eventId)
+          && owns(resource.data.authorUid)
+          && validComment(request.resource.data)
           && request.resource.data.authorUid == resource.data.authorUid
-          && request.resource.data.text is string
-          && request.resource.data.text.size() >= 1
-          && request.resource.data.text.size() <= 1000
+          && request.resource.data.authorName == resource.data.authorName
           && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.updatedAt == request.time;
-        allow delete: if owns(resource.data.authorUid);
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'updatedAt']);
+        allow delete: if canReadEvent(eventId) && owns(resource.data.authorUid);
       }
 
       match /media/{mediaId} {
@@ -56,35 +352,65 @@ service cloud.firestore {
       }
 
       match /ratings/{uid} {
-        allow read: if signedIn();
-        allow create, update: if owns(uid)
-          && request.resource.data.userId == uid
-          && request.resource.data.score is int
-          && request.resource.data.score >= 1
-          && request.resource.data.score <= 5
+        allow read: if canReadEvent(eventId);
+        allow create, update: if canReadEvent(eventId) && owns(uid)
+          && isStudent(uid)
+          && validRating(request.resource.data, uid)
           && request.resource.data.updatedAt == request.time;
-        allow delete: if owns(uid);
+        allow delete: if canReadEvent(eventId) && owns(uid);
       }
     }
 
     match /users/{uid} {
-      allow read, create, update: if owns(uid);
+      allow read: if owns(uid);
+      allow create: if owns(uid)
+        && validUserProfile(request.resource.data)
+        && request.resource.data.role == 'student';
+      allow update: if owns(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'course', 'campus'])
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.course is string
+        && request.resource.data.course.size() <= 120
+        && request.resource.data.campus is string
+        && request.resource.data.campus.size() <= 120;
       allow delete: if false;
 
       match /favorites/{eventId} {
         allow read, delete: if owns(uid);
         allow create, update: if owns(uid)
+          && isStudent(uid)
+          && isPublicEvent(eventId)
+          && request.resource.data.keys().hasOnly(['eventId', 'savedAt'])
+          && request.resource.data.keys().hasAll(['eventId', 'savedAt'])
           && request.resource.data.eventId == eventId
           && request.resource.data.savedAt == request.time;
       }
 
       match /registrations/{eventId} {
-        allow read, delete: if owns(uid);
-        allow create, update: if owns(uid)
-          && request.resource.data.eventId == eventId
-          && request.resource.data.eventTitle is string
-          && request.resource.data.eventTitle.size() <= 120
-          && request.resource.data.registeredAt == request.time;
+        allow read: if owns(uid);
+        allow create: if owns(uid)
+          && isStudent(uid)
+          && validStudentJoinUserRegistration(request.resource.data, eventId, uid)
+          && validStudentJoinFlow(eventId, uid);
+        allow update: if owns(uid)
+          && isStudent(uid)
+          && ((resource.data.status == 'CANCELADA'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'eventId', 'eventTitle', 'userId', 'recordType', 'status', 'registeredAt',
+                'confirmationExpiresAt', 'checkedInAt', 'updatedAt'
+              ])
+              && validStudentJoinUserRegistration(request.resource.data, eventId, uid)
+              && validStudentJoinFlow(eventId, uid))
+            || (request.resource.data.status == 'CANCELADA'
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.confirmationExpiresAt == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status', 'confirmationExpiresAt', 'updatedAt'
+              ])
+              && validStudentRegistrationCancellation(eventId, uid)));
+        allow delete: if false;
       }
     }
   }

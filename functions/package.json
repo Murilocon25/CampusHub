@@ -1,0 +1,22 @@
+{
+  "name": "campushub-functions",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "serve": "npm run build && firebase emulators:start --only auth,firestore,functions",
+    "deploy": "firebase deploy --only functions",
+    "migrate:legacy": "npm run build && node lib/migrateLegacyData.js",
+    "role:set": "npm run build && node lib/setUserRole.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.1",
+    "firebase-functions": "^7.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
