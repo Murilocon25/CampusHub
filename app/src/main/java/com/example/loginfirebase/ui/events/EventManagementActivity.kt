@@ -5,7 +5,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
@@ -26,6 +25,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.android.material.snackbar.Snackbar
+import com.google.firebase.firestore.QuerySnapshot
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,11 +42,15 @@ class EventManagementActivity : AppCompatActivity() {
     private lateinit var stateView: CampusStateView
     private lateinit var participantList: RecyclerView
     private lateinit var adapter: ParticipantAdapter
+    private lateinit var attendanceRequestList: RecyclerView
+    private lateinit var attendanceRequestAdapter: AttendanceRequestAdapter
     private lateinit var search: TextInputEditText
     private var event: CampusEvent? = null
     private var participants: List<DocumentSnapshot> = emptyList()
+    private var attendanceRequests: List<DocumentSnapshot> = emptyList()
     private var eventListener: ListenerRegistration? = null
     private var participantsListener: ListenerRegistration? = null
+    private var attendanceRequestsListener: ListenerRegistration? = null
     private var canObserve = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,10 +63,14 @@ class EventManagementActivity : AppCompatActivity() {
         setContentView(R.layout.activity_event_management)
         stateView = findViewById(R.id.event_manager_state)
         participantList = findViewById(R.id.event_manager_participants)
+        attendanceRequestList = findViewById(R.id.event_manager_attendance_requests)
         search = findViewById(R.id.event_manager_search)
         adapter = ParticipantAdapter()
+        attendanceRequestAdapter = AttendanceRequestAdapter()
         participantList.layoutManager = LinearLayoutManager(this)
         participantList.adapter = adapter
+        attendanceRequestList.layoutManager = LinearLayoutManager(this)
+        attendanceRequestList.adapter = attendanceRequestAdapter
         findViewById<MaterialToolbar>(R.id.event_manager_toolbar).setNavigationOnClickListener { finish() }
         findViewById<com.google.android.material.button.MaterialButton>(R.id.event_manager_publish).setOnClickListener {
             publishEvent()
@@ -109,6 +117,7 @@ class EventManagementActivity : AppCompatActivity() {
     private fun showAccessDenied() {
         stateView.showMessage(getString(R.string.event_manager_access_denied))
         participantList.isVisible = false
+        findViewById<View>(R.id.event_manager_attendance_requests_section).isVisible = false
         findViewById<View>(R.id.event_manager_actions).isVisible = false
     }
 
@@ -116,8 +125,8 @@ class EventManagementActivity : AppCompatActivity() {
         val current = event ?: return
         findViewById<View>(R.id.event_manager_publish).isVisible = current.status.firestoreValue == "DRAFT"
         findViewById<View>(R.id.event_manager_end).isVisible = current.status.firestoreValue == "PUBLISHED"
-        findViewById<View>(R.id.event_manager_scan).isVisible = false
-        findViewById<View>(R.id.event_manager_checkins).isVisible = false
+        val canCheckIn = current.status.firestoreValue in setOf("PUBLISHED", "ENDED")
+        findViewById<View>(R.id.event_manager_checkins).isVisible = canCheckIn
         findViewById<View>(R.id.event_manager_limited_features).isVisible = current.status.firestoreValue == "PUBLISHED"
     }
 
@@ -201,7 +210,44 @@ class EventManagementActivity : AppCompatActivity() {
                     .onFailure { stateView.showMessage(getString(R.string.event_manager_load_error)) }
             }
         }
+        if (attendanceRequestsListener == null) {
+            attendanceRequestsListener = repository.observeAttendanceRequests(eventId) { result ->
+                result.onSuccess { snapshot -> showAttendanceRequests(snapshot) }
+                    .onFailure { showMessage(R.string.event_manager_attendance_requests_error) }
+            }
+        }
     }
+
+    private fun showAttendanceRequests(snapshot: QuerySnapshot) {
+        attendanceRequests = snapshot.documents.sortedByDescending {
+            it.getTimestamp("requestedAt")?.toDate()?.time ?: 0L
+        }
+        attendanceRequestAdapter.submit(attendanceRequests)
+        findViewById<View>(R.id.event_manager_attendance_requests_section).isVisible = attendanceRequests.isNotEmpty()
+    }
+
+    private fun confirmAttendanceRequest(snapshot: DocumentSnapshot) {
+        val studentUid = snapshot.id
+        val organizerUid = authRepository.currentUser?.uid
+        if (organizerUid.isNullOrBlank()) {
+            showMessage(R.string.event_manager_attendance_decision_error)
+            return
+        }
+        attendanceRequestAdapter.setBusy(studentUid, true)
+        repository.confirmAttendanceRequest(eventId, studentUid, organizerUid)
+            .addOnSuccessListener {
+                attendanceRequestAdapter.setBusy(studentUid, false)
+                showMessage(getString(R.string.event_manager_attendance_approved, studentDisplayName(snapshot)))
+            }
+            .addOnFailureListener {
+                attendanceRequestAdapter.setBusy(studentUid, false)
+                showMessage(R.string.event_manager_attendance_decision_error)
+            }
+    }
+
+    private fun studentDisplayName(snapshot: DocumentSnapshot): String =
+        snapshot.getString("studentName")?.takeIf(String::isNotBlank)
+            ?: getString(R.string.profile_student_fallback)
 
     private fun showParticipants(items: List<DocumentSnapshot>) {
         participants = items
@@ -236,6 +282,8 @@ class EventManagementActivity : AppCompatActivity() {
         eventListener = null
         participantsListener?.remove()
         participantsListener = null
+        attendanceRequestsListener?.remove()
+        attendanceRequestsListener = null
         super.onStop()
     }
 
@@ -304,6 +352,83 @@ class EventManagementActivity : AppCompatActivity() {
                     registeredAt,
                     getString(if (checkedIn) R.string.event_manager_checked_in else R.string.event_manager_not_checked_in)
                 )
+            }
+        }
+    }
+
+    private inner class AttendanceRequestAdapter : RecyclerView.Adapter<AttendanceRequestAdapter.RequestHolder>() {
+        private var items: List<DocumentSnapshot> = emptyList()
+        private val busyUids = mutableSetOf<String>()
+
+        fun submit(requests: List<DocumentSnapshot>) {
+            items = requests
+            busyUids.retainAll(requests.mapTo(mutableSetOf()) { it.id })
+            notifyDataSetChanged()
+        }
+
+        fun setBusy(uid: String, busy: Boolean) {
+            if (busy) busyUids += uid else busyUids -= uid
+            notifyItemChanged(items.indexOfFirst { it.id == uid }.takeIf { it >= 0 } ?: return)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RequestHolder {
+            val card = MaterialCardView(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(-1, -2).apply {
+                    bottomMargin = resources.getDimensionPixelSize(R.dimen.space_2)
+                }
+                radius = resources.getDimension(R.dimen.shape_medium)
+                cardElevation = 0f
+                strokeWidth = resources.getDimensionPixelSize(R.dimen.stroke_width)
+                strokeColor = getColor(R.color.color_border)
+                setCardBackgroundColor(getColor(R.color.color_surface))
+            }
+            val content = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                val inset = resources.getDimensionPixelSize(R.dimen.space_2)
+                setPadding(inset, inset, inset, inset)
+                addView(TextView(parent.context).apply {
+                    id = android.R.id.text1
+                    setTextAppearance(R.style.TextAppearance_CampusHub_Body)
+                })
+                addView(TextView(parent.context).apply {
+                    id = android.R.id.text2
+                    setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+                })
+                addView(LinearLayout(parent.context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.END
+                    addView(com.google.android.material.button.MaterialButton(context, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+                        id = R.id.event_manager_attendance_confirm
+                        setText(R.string.event_manager_attendance_confirm)
+                        isAllCaps = false
+                    })
+                })
+            }
+            card.addView(content)
+            return RequestHolder(card)
+        }
+
+        override fun onBindViewHolder(holder: RequestHolder, position: Int) = holder.bind(items[position])
+        override fun getItemCount(): Int = items.size
+
+        inner class RequestHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            fun bind(snapshot: DocumentSnapshot) {
+                val uid = snapshot.id
+                val name = studentDisplayName(snapshot)
+                val email = snapshot.getString("studentEmail").orEmpty()
+                val requestedAt = snapshot.getTimestamp("requestedAt")?.toDate()?.let { dateFormat.format(it) }
+                    ?: getString(R.string.not_informed)
+                itemView.findViewById<TextView>(android.R.id.text1).text = name
+                itemView.findViewById<TextView>(android.R.id.text2).text = getString(
+                    R.string.event_manager_attendance_request_detail,
+                    email.ifBlank { getString(R.string.not_informed) },
+                    requestedAt,
+                )
+                val busy = uid in busyUids
+                itemView.findViewById<View>(R.id.event_manager_attendance_confirm).apply {
+                    isEnabled = !busy
+                    setOnClickListener { confirmAttendanceRequest(snapshot) }
+                }
             }
         }
     }

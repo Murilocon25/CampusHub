@@ -272,9 +272,11 @@ class EventRepository(
         val eventRegistrationRef = eventRef.collection("registrations").document(uid)
         val userRegistrationRef = db.collection("users").document(uid)
             .collection("registrations").document(eventId)
+        val attendanceRequestRef = eventRef.collection("attendanceRequests").document(uid)
         val eventSnapshot = transaction.get(eventRef)
         val eventRegistration = transaction.get(eventRegistrationRef)
         val userRegistration = transaction.get(userRegistrationRef)
+        val attendanceRequest = transaction.get(attendanceRequestRef)
         if (!eventSnapshot.exists() || !eventRegistration.exists() || !userRegistration.exists() ||
             FirebaseAuth.getInstance().currentUser?.uid != uid
         ) throw EventRegistrationException(EventRegistrationFailureReason.REGISTRATION_MISSING)
@@ -312,11 +314,98 @@ class EventRepository(
             "confirmationExpiresAt" to null,
             "updatedAt" to FieldValue.serverTimestamp()
         ))
+        if (attendanceRequest.exists()) transaction.delete(attendanceRequestRef)
         EventRegistrationResult(mapOf("status" to "CANCELADA"))
     }
 
     fun confirmWaitlist(eventId: String): Task<HttpsCallableResult> =
         cloudFunctions.getHttpsCallable("confirmWaitlist").call(mapOf("eventId" to eventId))
+
+    fun requestAttendance(eventId: String, studentUid: String): Task<String> = db.runTransaction { transaction ->
+        val eventRef = event(eventId)
+        val profileRef = db.collection("users").document(studentUid)
+        val registrationRef = eventRef.collection("registrations").document(studentUid)
+        val requestRef = eventRef.collection("attendanceRequests").document(studentUid)
+        val eventSnapshot = transaction.get(eventRef)
+        val profile = transaction.get(profileRef)
+        val registration = transaction.get(registrationRef)
+        val existingRequest = transaction.get(requestRef)
+
+        if (!profile.exists() || FirebaseAuth.getInstance().currentUser?.uid != studentUid ||
+            UserRole.fromFirestore(profile.getString("role")) != UserRole.STUDENT
+        ) throw SecurityException("Somente o aluno autenticado pode solicitar presença.")
+        if (!eventSnapshot.exists() || !registration.exists()) {
+            throw IllegalStateException("Inscrição não encontrada.")
+        }
+        if (eventSnapshot.getString("status") !in setOf("PUBLISHED", "ENDED")) {
+            throw IllegalStateException("O evento não está disponível para check-in.")
+        }
+
+        when (registration.getString("status")) {
+            "PRESENTE" -> "PRESENTE"
+            "CONFIRMADA" -> {
+                if (existingRequest.exists() && existingRequest.getString("status") == "PENDING") {
+                    return@runTransaction "PENDING"
+                }
+                val profileName = profile.getString("name")?.takeIf(String::isNotBlank) ?: "Aluno"
+                transaction.set(requestRef, mapOf(
+                    "eventId" to eventId,
+                    "userId" to studentUid,
+                    "studentName" to profileName,
+                    "studentEmail" to FirebaseAuth.getInstance().currentUser?.email.orEmpty(),
+                    "status" to "PENDING",
+                    "requestedAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                ))
+                "PENDING"
+            }
+            else -> throw IllegalStateException("Somente inscrições confirmadas podem solicitar presença.")
+        }
+    }
+
+    fun confirmAttendanceRequest(eventId: String, studentUid: String, organizerUid: String): Task<Void> {
+        val eventRef = event(eventId)
+        val eventRegistrationRef = eventRef.collection("registrations").document(studentUid)
+        val userRegistrationRef = db.collection("users").document(studentUid)
+            .collection("registrations").document(eventId)
+        val requestRef = eventRef.collection("attendanceRequests").document(studentUid)
+        val serverTime = FieldValue.serverTimestamp()
+        return db.batch()
+            .update(eventRegistrationRef, mapOf(
+                "status" to "PRESENTE",
+                "checkedInAt" to serverTime,
+                "checkedInBy" to organizerUid,
+                "qrTokenHash" to null,
+                "updatedAt" to serverTime,
+            ))
+            .update(userRegistrationRef, mapOf(
+                "status" to "PRESENTE",
+                "checkedInAt" to serverTime,
+                "updatedAt" to serverTime,
+            ))
+            .update(requestRef, mapOf(
+                "status" to "APPROVED",
+                "decidedAt" to serverTime,
+                "decidedBy" to organizerUid,
+                "updatedAt" to serverTime,
+            ))
+            .commit()
+    }
+
+    fun observeAttendanceRequests(
+        eventId: String,
+        onResult: (Result<QuerySnapshot>) -> Unit
+    ): ListenerRegistration = event(eventId)
+        .collection("attendanceRequests")
+        .whereEqualTo("status", "PENDING")
+        .addSnapshotListener { snapshot, error ->
+            if (error != null) onResult(Result.failure(error))
+            else if (snapshot == null) onResult(Result.failure(IllegalStateException("Attendance request snapshot was empty")))
+            else onResult(Result.success(snapshot))
+        }
+
+    fun getAttendanceRequest(eventId: String, studentUid: String): Task<DocumentSnapshot> =
+        event(eventId).collection("attendanceRequests").document(studentUid).get()
 
     fun getRegistrationQr(eventId: String): Task<HttpsCallableResult> =
         cloudFunctions.getHttpsCallable("getRegistrationQr").call(mapOf("eventId" to eventId))

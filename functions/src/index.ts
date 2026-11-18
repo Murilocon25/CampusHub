@@ -314,8 +314,8 @@ export const getRegistrationQr = onCall(async (request) => {
   const now = Timestamp.now();
   await db.runTransaction(async (transaction) => {
     const [eventSnap, regSnap] = await Promise.all([transaction.get(eventRef), transaction.get(regRef)]);
-    if (!eventSnap.exists || !regSnap.exists || regSnap.get("status") !== "CONFIRMADA") {
-      throw new HttpsError("failed-precondition", "Somente inscrições confirmadas possuem QR Code válido.");
+    if (!eventSnap.exists || !regSnap.exists || !["CONFIRMADA", "PRESENTE"].includes(String(regSnap.get("status")))) {
+      throw new HttpsError("failed-precondition", "Somente participantes confirmados ou presentes possuem QR Code.");
     }
     transaction.update(regRef, { qrTokenHash: qr.hash, qrIssuedAt: now, updatedAt: now });
   });
@@ -323,36 +323,192 @@ export const getRegistrationQr = onCall(async (request) => {
 });
 
 export const validateCheckIn = onCall(async (request) => {
+  // Legacy endpoint kept so older clients receive a clear error instead of
+  // bypassing the student-request / organizer-approval flow.
+  requireUid(request.auth?.uid);
+  throw new HttpsError("failed-precondition", "O participante deve ler o QR Code do evento e aguardar a aprovação do organizador.");
+});
+
+export const getAttendanceQr = onCall(async (request) => {
+  const uid = requireUid(request.auth?.uid);
+  const profile = await db.collection("users").doc(uid).get();
+  const role = profile.exists ? profile.get("role") : undefined;
+  if (!profile.exists || (role !== "organizer" && role !== "student")) {
+    throw new HttpsError("permission-denied", "Seu perfil não pode acessar o QR Code deste evento.");
+  }
+  const eventId = requireEventId(request.data?.eventId);
+  const eventRef = db.collection("events").doc(eventId);
+  const qrRef = eventRef.collection("internal").doc("attendanceQr");
+  const now = Timestamp.now();
+  const registrationRefForStudent = role === "student" ? registrationRef(eventId, uid) : null;
+  let token = "";
+  await db.runTransaction(async (transaction) => {
+    const [eventSnap, qrSnap, registrationSnap] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(qrRef),
+      registrationRefForStudent ? transaction.get(registrationRefForStudent) : Promise.resolve(null),
+    ]);
+    if (!eventSnap.exists || !["PUBLISHED", "ENDED"].includes(String(eventSnap.get("status")))) {
+      throw new HttpsError("failed-precondition", "O evento não está disponível para gerar o QR Code de presença.");
+    }
+    const isEventOrganizer = role === "organizer" && eventSnap.get("creatorUid") === uid;
+    const isConfirmedParticipant = role === "student" && registrationSnap?.exists
+      && ["CONFIRMADA", "PRESENTE"].includes(String(registrationSnap.get("status")));
+    if (!isEventOrganizer && !isConfirmedParticipant) {
+      throw new HttpsError("permission-denied", "Somente o organizador ou um participante confirmado pode acessar este QR Code.");
+    }
+
+    const savedToken = qrSnap.get("token");
+    const savedHash = qrSnap.get("tokenHash");
+    if (qrSnap.exists && typeof savedToken === "string" && savedToken.length > 0
+      && savedHash === createHash("sha256").update(savedToken).digest("hex")) {
+      token = savedToken;
+      return;
+    }
+
+    const qr = makeQrToken();
+    token = qr.token;
+    transaction.set(qrRef, { token: qr.token, tokenHash: qr.hash, updatedAt: now });
+  });
+  return { qrPayload: `CAMPUSHUB_EVENT|${eventId}|${token}` };
+});
+
+export const requestAttendance = onCall(async (request) => {
+  const uid = requireUid(request.auth?.uid);
+  await requireRole(uid, "student");
+  const eventId = requireEventId(request.data?.eventId);
+  const payload = request.data?.qrPayload;
+  if (typeof payload !== "string" || payload.length > 512) {
+    throw new HttpsError("invalid-argument", "QR Code inválido.");
+  }
+  const [prefix, qrEventId, token, ...rest] = payload.split("|");
+  if (prefix !== "CAMPUSHUB_EVENT" || qrEventId !== eventId || !token || rest.length > 0) {
+    throw new HttpsError("invalid-argument", "Este QR Code não pertence a este evento.");
+  }
+
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const eventRef = db.collection("events").doc(eventId);
+  const qrRef = eventRef.collection("internal").doc("attendanceQr");
+  const regRef = registrationRef(eventId, uid);
+  const requestRef = eventRef.collection("attendanceRequests").doc(uid);
+  const now = Timestamp.now();
+  let resultStatus = "PENDING";
+
+  await db.runTransaction(async (transaction) => {
+    const [eventSnap, qrSnap, regSnap, attendanceRequestSnap] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(qrRef),
+      transaction.get(regRef),
+      transaction.get(requestRef),
+    ]);
+    if (!eventSnap.exists || !regSnap.exists) throw new HttpsError("not-found", "Inscrição não encontrada.");
+    if (!["PUBLISHED", "ENDED"].includes(String(eventSnap.get("status")))) {
+      throw new HttpsError("failed-precondition", "O evento não está disponível para check-in.");
+    }
+    if (!qrSnap.exists || qrSnap.get("tokenHash") !== tokenHash) {
+      throw new HttpsError("permission-denied", "QR Code inválido ou expirado.");
+    }
+
+    const registration = regSnap.data()!;
+    if (registration.status === "PRESENTE") {
+      resultStatus = "PRESENTE";
+      return;
+    }
+    if (registration.status !== "CONFIRMADA") {
+      throw new HttpsError("failed-precondition", "Somente inscrições confirmadas podem solicitar presença.");
+    }
+    if (attendanceRequestSnap.exists && attendanceRequestSnap.get("status") === "PENDING") {
+      resultStatus = "PENDING";
+      return;
+    }
+
+    transaction.set(requestRef, {
+      eventId,
+      userId: uid,
+      studentName: String(registration.studentName || "Aluno"),
+      studentEmail: String(registration.studentEmail || ""),
+      status: "PENDING",
+      requestedAt: now,
+      updatedAt: now,
+    });
+  });
+
+  return { status: resultStatus };
+});
+
+export const decideAttendanceRequest = onCall(async (request) => {
   const organizerUid = requireUid(request.auth?.uid);
   await requireRole(organizerUid, "organizer");
   const eventId = requireEventId(request.data?.eventId);
-  const payload = request.data?.qrPayload;
-  if (typeof payload !== "string" || payload.length > 512) throw new HttpsError("invalid-argument", "QR Code inválido.");
-  const [prefix, qrEventId, attendeeUid, token, ...rest] = payload.split("|");
-  if (prefix !== "CAMPUSHUB" || qrEventId !== eventId || !attendeeUid || !token || rest.length > 0) {
-    throw new HttpsError("invalid-argument", "Este QR Code não pertence a este evento.");
-  }
-  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const studentUid = requireUid(request.data?.studentUid);
+  const approved = request.data?.approved;
+  if (typeof approved !== "boolean") throw new HttpsError("invalid-argument", "Decisão inválida.");
+
   const eventRef = db.collection("events").doc(eventId);
-  const regRef = registrationRef(eventId, attendeeUid);
-  const mirrorRef = userRegistrationRef(attendeeUid, eventId);
+  const requestRef = eventRef.collection("attendanceRequests").doc(studentUid);
+  const regRef = registrationRef(eventId, studentUid);
+  const mirrorRef = userRegistrationRef(studentUid, eventId);
   const now = Timestamp.now();
-  let attendeeName = "Aluno";
+  let resultStatus = approved ? "APPROVED" : "REJECTED";
+
   await db.runTransaction(async (transaction) => {
-    const [eventSnap, regSnap] = await Promise.all([transaction.get(eventRef), transaction.get(regRef)]);
-    if (!eventSnap.exists || !regSnap.exists) throw new HttpsError("not-found", "Inscrição não encontrada.");
-    if (eventSnap.get("creatorUid") !== organizerUid) throw new HttpsError("permission-denied", "Você não administra este evento.");
-    if (eventSnap.get("status") === "DRAFT") throw new HttpsError("failed-precondition", "O evento ainda não foi publicado.");
-    const registration = regSnap.data()!;
-    if (registration.status !== "CONFIRMADA" || registration.qrTokenHash !== tokenHash) {
-      throw new HttpsError("permission-denied", "QR Code inválido, cancelado ou não confirmado.");
+    const [eventSnap, attendanceRequestSnap, regSnap] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(requestRef),
+      transaction.get(regRef),
+    ]);
+    if (!eventSnap.exists || eventSnap.get("creatorUid") !== organizerUid) {
+      throw new HttpsError("permission-denied", "Você não administra este evento.");
     }
-    attendeeName = String(registration.studentName || "Aluno");
-    const checkedIn = { ...registration, status: "PRESENTE", checkedInAt: now, checkedInBy: organizerUid, qrTokenHash: null, updatedAt: now };
+    if (!attendanceRequestSnap.exists || attendanceRequestSnap.get("status") !== "PENDING") {
+      throw new HttpsError("failed-precondition", "Esta solicitação já foi respondida ou não está mais disponível.");
+    }
+    if (!regSnap.exists || regSnap.get("status") !== "CONFIRMADA") {
+      resultStatus = "INVALIDATED";
+      transaction.update(requestRef, {
+        status: resultStatus,
+        decidedAt: now,
+        decidedBy: organizerUid,
+        updatedAt: now,
+      });
+      return;
+    }
+
+    if (!approved) {
+      transaction.update(requestRef, {
+        status: "REJECTED",
+        decidedAt: now,
+        decidedBy: organizerUid,
+        updatedAt: now,
+      });
+      return;
+    }
+
+    const registration = regSnap.data()!;
+    const checkedIn = {
+      ...registration,
+      status: "PRESENTE",
+      checkedInAt: now,
+      checkedInBy: organizerUid,
+      qrTokenHash: null,
+      updatedAt: now,
+    };
     transaction.set(regRef, checkedIn);
-    transaction.set(mirrorRef, registrationMirror(eventId, String(eventSnap.get("title") ?? registration.eventTitle ?? "Evento"), attendeeUid, checkedIn));
+    transaction.set(mirrorRef, registrationMirror(
+      eventId,
+      String(eventSnap.get("title") ?? registration.eventTitle ?? "Evento"),
+      studentUid,
+      checkedIn,
+    ));
+    transaction.update(requestRef, {
+      status: "APPROVED",
+      decidedAt: now,
+      decidedBy: organizerUid,
+      updatedAt: now,
+    });
   });
-  return { status: "PRESENTE", attendeeName, checkedInAt: now.toMillis() };
+
+  return { status: resultStatus };
 });
 
 export const expireWaitlistOffers = onSchedule({ schedule: "every 1 minutes", timeoutSeconds: 540 }, async () => {

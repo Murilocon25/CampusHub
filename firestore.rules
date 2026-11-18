@@ -254,6 +254,66 @@ service cloud.firestore {
         ]);
     }
 
+    function validAttendanceRequest(data, eventId, uid) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      let registrationPath = /databases/$(database)/documents/events/$(eventId)/registrations/$(uid);
+      let profilePath = /databases/$(database)/documents/users/$(uid);
+      let profileName = get(profilePath).data.get('name', '');
+      let expectedName = profileName is string && profileName.size() > 0 ? profileName : 'Aluno';
+      return owns(uid)
+        && isStudent(uid)
+        && exists(eventPath)
+        && get(eventPath).data.status in ['PUBLISHED', 'ENDED']
+        && exists(registrationPath)
+        && get(registrationPath).data.status == 'CONFIRMADA'
+        && data.keys().hasOnly([
+          'eventId', 'userId', 'studentName', 'studentEmail', 'status', 'requestedAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'eventId', 'userId', 'studentName', 'studentEmail', 'status', 'requestedAt', 'updatedAt'
+        ])
+        && data.eventId == eventId
+        && data.userId == uid
+        && data.studentName == expectedName
+        && data.studentEmail == request.auth.token.get('email', '')
+        && data.status == 'PENDING'
+        && data.requestedAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function validOrganizerAttendanceApproval(eventId, uid) {
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      let eventRegistrationPath = /databases/$(database)/documents/events/$(eventId)/registrations/$(uid);
+      let userRegistrationPath = /databases/$(database)/documents/users/$(uid)/registrations/$(eventId);
+      let requestPath = /databases/$(database)/documents/events/$(eventId)/attendanceRequests/$(uid);
+      let event = get(eventPath).data;
+      let requestBefore = get(requestPath).data;
+      let requestAfter = getAfter(requestPath).data;
+      let eventRegistrationBefore = get(eventRegistrationPath).data;
+      let eventRegistrationAfter = getAfter(eventRegistrationPath).data;
+      let userRegistrationBefore = get(userRegistrationPath).data;
+      let userRegistrationAfter = getAfter(userRegistrationPath).data;
+      return isOrganizer(request.auth.uid)
+        && event.creatorUid == request.auth.uid
+        && requestBefore.status == 'PENDING'
+        && requestAfter.eventId == eventId
+        && requestAfter.userId == uid
+        && requestAfter.status == 'APPROVED'
+        && requestAfter.decidedBy == request.auth.uid
+        && requestAfter.decidedAt == request.time
+        && requestAfter.updatedAt == request.time
+        && eventRegistrationBefore.status == 'CONFIRMADA'
+        && eventRegistrationAfter.status == 'PRESENTE'
+        && eventRegistrationAfter.checkedInAt == request.time
+        && eventRegistrationAfter.checkedInBy == request.auth.uid
+        && eventRegistrationAfter.qrTokenHash == null
+        && eventRegistrationAfter.updatedAt == request.time
+        && userRegistrationBefore.status == 'CONFIRMADA'
+        && userRegistrationAfter.status == 'PRESENTE'
+        && userRegistrationAfter.checkedInAt == request.time
+        && userRegistrationAfter.updatedAt == request.time;
+    }
+
     match /events/{eventId} {
       allow read: if signedIn() && (
         resource.data.status in ['PUBLISHED', 'ENDED']
@@ -309,7 +369,7 @@ service cloud.firestore {
           && isStudent(uid)
           && validStudentJoinEventRegistration(request.resource.data, eventId, uid)
           && validStudentJoinFlow(eventId, uid);
-        allow update: if owns(uid)
+        allow update: if (owns(uid)
           && isStudent(uid)
           && ((resource.data.status == 'CANCELADA'
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -326,7 +386,17 @@ service cloud.firestore {
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                 'status', 'cancellationReason', 'confirmationExpiresAt', 'qrTokenHash', 'updatedAt'
               ])
-              && validStudentRegistrationCancellation(eventId, uid)));
+              && validStudentRegistrationCancellation(eventId, uid))))
+          || (resource.data.status == 'CONFIRMADA'
+            && request.resource.data.status == 'PRESENTE'
+            && request.resource.data.checkedInAt == request.time
+            && request.resource.data.checkedInBy == request.auth.uid
+            && request.resource.data.qrTokenHash == null
+            && request.resource.data.updatedAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'checkedInAt', 'checkedInBy', 'qrTokenHash', 'updatedAt'
+            ])
+            && validOrganizerAttendanceApproval(eventId, uid));
         allow delete: if false;
       }
 
@@ -358,6 +428,45 @@ service cloud.firestore {
           && validRating(request.resource.data, uid)
           && request.resource.data.updatedAt == request.time;
         allow delete: if canReadEvent(eventId) && owns(uid);
+      }
+
+      match /attendanceRequests/{uid} {
+        allow read: if (owns(uid) && isStudent(uid))
+          || (isOrganizer(request.auth.uid)
+            && exists(/databases/$(database)/documents/events/$(eventId))
+            && get(/databases/$(database)/documents/events/$(eventId)).data.creatorUid == request.auth.uid);
+        allow create: if validAttendanceRequest(request.resource.data, eventId, uid);
+        allow update: if (owns(uid)
+            && isStudent(uid)
+            && resource.data.status in ['REJECTED', 'INVALIDATED']
+            && validAttendanceRequest(request.resource.data, eventId, uid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'eventId', 'userId', 'studentName', 'studentEmail', 'status',
+              'requestedAt', 'updatedAt', 'decidedAt', 'decidedBy'
+            ]))
+          || (resource.data.status == 'PENDING'
+            && request.resource.data.status == 'APPROVED'
+            && request.resource.data.keys().hasOnly([
+              'eventId', 'userId', 'studentName', 'studentEmail', 'status', 'requestedAt',
+              'updatedAt', 'decidedAt', 'decidedBy'
+            ])
+            && request.resource.data.keys().hasAll([
+              'eventId', 'userId', 'studentName', 'studentEmail', 'status', 'requestedAt',
+              'updatedAt', 'decidedAt', 'decidedBy'
+            ])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'updatedAt', 'decidedAt', 'decidedBy'
+            ])
+            && request.resource.data.decidedBy == request.auth.uid
+            && request.resource.data.decidedAt == request.time
+            && request.resource.data.updatedAt == request.time
+            && validOrganizerAttendanceApproval(eventId, uid));
+        allow delete: if owns(uid) && isStudent(uid)
+          && validStudentRegistrationCancellation(eventId, uid);
+      }
+
+      match /internal/{documentId} {
+        allow read, write: if false;
       }
     }
 
@@ -394,7 +503,7 @@ service cloud.firestore {
           && isStudent(uid)
           && validStudentJoinUserRegistration(request.resource.data, eventId, uid)
           && validStudentJoinFlow(eventId, uid);
-        allow update: if owns(uid)
+        allow update: if (owns(uid)
           && isStudent(uid)
           && ((resource.data.status == 'CANCELADA'
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -409,7 +518,15 @@ service cloud.firestore {
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                 'status', 'confirmationExpiresAt', 'updatedAt'
               ])
-              && validStudentRegistrationCancellation(eventId, uid)));
+              && validStudentRegistrationCancellation(eventId, uid))))
+          || (resource.data.status == 'CONFIRMADA'
+            && request.resource.data.status == 'PRESENTE'
+            && request.resource.data.checkedInAt == request.time
+            && request.resource.data.updatedAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'checkedInAt', 'updatedAt'
+            ])
+            && validOrganizerAttendanceApproval(eventId, uid));
         allow delete: if false;
       }
     }

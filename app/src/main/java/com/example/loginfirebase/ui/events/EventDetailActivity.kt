@@ -64,6 +64,8 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
@@ -129,15 +131,12 @@ class EventDetailActivity : AppCompatActivity() {
     private val cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val photo = pendingCameraPhoto
         pendingCameraPhoto = null
-        if (result.resultCode != RESULT_OK || photo == null) {
-            photo?.delete()
-            return@registerForActivityResult
-        }
+        if (photo == null) return@registerForActivityResult
 
         val returnedUri = result.data?.data
             ?: result.data?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
         when {
-            photo.isFile && photo.length() > 0L -> publishCapturedEventPhoto(photo)
+            isUsableCapturedPhoto(photo) -> publishCapturedEventPhoto(photo)
             returnedUri != null -> {
                 photo.delete()
                 publishEventPhoto(returnedUri)
@@ -149,10 +148,12 @@ class EventDetailActivity : AppCompatActivity() {
                         thumbnail.compress(Bitmap.CompressFormat.JPEG, 90, output)
                     }
                 }.getOrDefault(false)
-                if (saved && photo.length() > 0L) publishCapturedEventPhoto(photo)
+                if (saved && isUsableCapturedPhoto(photo)) publishCapturedEventPhoto(photo)
                 else {
                     photo.delete()
-                    showMessage(R.string.event_photo_camera_unavailable)
+                    if (result.resultCode == RESULT_OK) {
+                        showMessage(R.string.event_photo_camera_unavailable)
+                    }
                 }
             }
         }
@@ -201,6 +202,23 @@ class EventDetailActivity : AppCompatActivity() {
             }
         }
         onLocationPicked = null
+    }
+    private val photoCameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchCameraForEventPhoto()
+        else showMessage(R.string.event_camera_permission_required)
+    }
+    private val videoCameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchVideoCapture(eventId)
+        else showMessage(R.string.event_camera_permission_required)
+    }
+    private var attendanceScanButton: MaterialButton? = null
+    private val attendanceQrScanner = registerForActivityResult(ScanContract()) { result ->
+        val payload = result.contents
+        if (payload.isNullOrBlank()) {
+            showMessage(R.string.registration_attendance_scan_cancelled)
+        } else {
+            requestAttendance(payload)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -549,6 +567,47 @@ class EventDetailActivity : AppCompatActivity() {
             setBackgroundTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.color_primary)))
             setTextColor(getColor(R.color.color_on_primary))
         }
+        val qrButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            setText(R.string.registration_scan_attendance_qr)
+            isAllCaps = false
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
+            insetTop = 0
+            insetBottom = 0
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.color_secondary_container)))
+            setTextColor(getColor(R.color.color_on_secondary_container))
+            visibility = View.GONE
+            attendanceScanButton = this
+            setOnClickListener {
+                val options = ScanOptions().apply {
+                    setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                    setPrompt(getString(R.string.registration_scan_attendance_qr))
+                    setBeepEnabled(false)
+                    setOrientationLocked(true)
+                }
+                attendanceQrScanner.launch(options)
+            }
+        }
+        val showQrButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            setText(R.string.registration_show_qr)
+            isAllCaps = false
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
+            insetTop = 0
+            insetBottom = 0
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.color_surface)))
+            setTextColor(getColor(R.color.color_primary))
+            strokeWidth = resources.getDimensionPixelSize(R.dimen.stroke_width)
+            strokeColor = android.content.res.ColorStateList.valueOf(getColor(R.color.color_border))
+            visibility = View.GONE
+            setOnClickListener {
+                AttendanceQrDialog.show(
+                    this@EventDetailActivity,
+                    "CAMPUSHUB_EVENT|${event.id}",
+                    R.string.attendance_qr_title,
+                    R.string.attendance_qr_hint,
+                    R.string.attendance_qr_load_error,
+                )
+            }
+        }
         val registrationNotice = TextView(this).apply {
             text = getString(R.string.registration_limited_features_note)
             setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
@@ -557,6 +616,12 @@ class EventDetailActivity : AppCompatActivity() {
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(registrationButton, LinearLayout.LayoutParams(-1, -2))
+            addView(qrButton, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = resources.getDimensionPixelSize(R.dimen.space_2)
+            })
+            addView(showQrButton, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = resources.getDimensionPixelSize(R.dimen.space_1)
+            })
             addView(registrationNotice, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = resources.getDimensionPixelSize(R.dimen.space_2)
             })
@@ -579,11 +644,26 @@ class EventDetailActivity : AppCompatActivity() {
                         "PRESENTE" -> R.string.registration_present_message
                         else -> R.string.registration_join
                     })
+                    qrButton.isVisible = status == "CONFIRMADA"
+                    showQrButton.isVisible = status in setOf("CONFIRMADA", "PRESENTE")
                     registrationNotice.isVisible = active && status != "PRESENTE"
                     if (status == "PRESENTE") showMessage(R.string.registration_present_message)
                     ratingSection.visibility = if (status in setOf("CONFIRMADA", "PRESENTE") && ended) View.VISIBLE else View.GONE
                 }
                 updateRegistrationUi()
+                eventRepository.getAttendanceRequest(event.id, userId)
+                    .addOnSuccessListener { attendanceRequest ->
+                        when (attendanceRequest.getString("status")) {
+                            "PENDING" -> qrButton.apply {
+                                setText(R.string.registration_attendance_pending)
+                                isEnabled = true
+                            }
+                            "APPROVED" -> {
+                                registrationStatus = "PRESENTE"
+                                updateRegistrationUi()
+                            }
+                        }
+                    }
                 if (registrationStatus in setOf("CONFIRMADA", "PRESENTE") && ended) {
                     eventRepository.getRating(userId, event.id).addOnSuccessListener { saved ->
                         saved.getLong("score")?.let { ratingBar.rating = it.toFloat() }
@@ -625,6 +705,45 @@ class EventDetailActivity : AppCompatActivity() {
                 }
             }
             .addOnFailureListener { showMessage(R.string.registration_check_error) }
+    }
+
+    private fun requestAttendance(payload: String) {
+        val parts = payload.split('|')
+        if (parts.size != 2 || parts[0] != "CAMPUSHUB_EVENT" || parts[1] != eventId) {
+            attendanceScanButton?.isEnabled = true
+            showMessage(R.string.registration_attendance_qr_invalid)
+            return
+        }
+        val studentUid = authRepository.currentUser?.uid
+        if (studentUid.isNullOrBlank()) {
+            attendanceScanButton?.isEnabled = true
+            showMessage(R.string.registration_attendance_request_error)
+            return
+        }
+        attendanceScanButton?.isEnabled = false
+        eventRepository.requestAttendance(eventId, studentUid)
+            .addOnSuccessListener { status ->
+                attendanceScanButton?.isEnabled = true
+                when (status) {
+                    "PENDING" -> {
+                        attendanceScanButton?.apply {
+                            setText(R.string.registration_attendance_pending)
+                            isEnabled = true
+                        }
+                        showMessage(R.string.registration_attendance_request_sent)
+                    }
+                    "PRESENTE" -> showMessage(R.string.registration_attendance_already_accepted)
+                    else -> showMessage(R.string.registration_attendance_request_error)
+                }
+            }
+            .addOnFailureListener { error ->
+                attendanceScanButton?.isEnabled = true
+                showMessage(
+                    if (error is FirebaseFirestoreException && error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
+                        R.string.registration_rules_error
+                    else R.string.registration_attendance_request_error
+                )
+            }
     }
 
     private fun loadEventCover(imageUrl: String) {
@@ -863,6 +982,10 @@ class EventDetailActivity : AppCompatActivity() {
 
     private fun launchVideoCapture(eventId: String) {
         if (isVideoInputBusy) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            videoCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            return
+        }
         setVideoInputBusy(true)
         val capture = try {
             EventVideoInput.createCaptureFile(this, eventId)
@@ -1167,6 +1290,10 @@ class EventDetailActivity : AppCompatActivity() {
             .format(Date(timestamp))
 
     private fun launchCameraForEventPhoto() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            photoCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            return
+        }
         val captureDirectory = File(cacheDir, "event_photo_capture")
         if (!captureDirectory.exists() && !captureDirectory.mkdirs()) {
             showMessage(R.string.event_photo_camera_unavailable)
@@ -1208,6 +1335,13 @@ class EventDetailActivity : AppCompatActivity() {
             photo.delete()
             handleMediaPublished(EventMediaType.PHOTO, result)
         }
+    }
+
+    private fun isUsableCapturedPhoto(photo: File): Boolean {
+        if (!photo.isFile || photo.length() <= 0L) return false
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(photo.absolutePath, bounds)
+        return bounds.outWidth > 0 && bounds.outHeight > 0
     }
 
     private fun publishEventPhoto(uri: Uri) {

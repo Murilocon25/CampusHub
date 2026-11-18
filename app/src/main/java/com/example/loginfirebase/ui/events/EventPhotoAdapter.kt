@@ -2,6 +2,8 @@ package com.example.loginfirebase.ui.events
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
@@ -164,10 +166,45 @@ class EventPhotoAdapter(
             while (bounds.outWidth / sampleSize > targetSize * 2 ||
                 bounds.outHeight / sampleSize > targetSize * 2
             ) sampleSize *= 2
-            return BitmapFactory.decodeFile(
+            val bitmap = BitmapFactory.decodeFile(
                 file.absolutePath,
                 BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            )
+            ) ?: return null
+
+            val orientation = runCatching {
+                ExifInterface(file).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+            val transform = Matrix()
+            when (orientation) {
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> transform.setScale(-1f, 1f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> transform.setRotate(180f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> {
+                    transform.setRotate(180f)
+                    transform.postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_TRANSPOSE -> {
+                    transform.setRotate(90f)
+                    transform.postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_90 -> transform.setRotate(90f)
+                ExifInterface.ORIENTATION_TRANSVERSE -> {
+                    transform.setRotate(270f)
+                    transform.postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_270 -> transform.setRotate(270f)
+            }
+            if (orientation == ExifInterface.ORIENTATION_NORMAL ||
+                orientation == ExifInterface.ORIENTATION_UNDEFINED
+            ) return bitmap
+
+            return runCatching {
+                Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, transform, true)
+            }.getOrDefault(bitmap).also { oriented ->
+                if (oriented !== bitmap) bitmap.recycle()
+            }
         }
     }
 }

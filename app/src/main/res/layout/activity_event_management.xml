@@ -57,7 +57,6 @@
         android:paddingEnd="@dimen/space_4">
         <com.google.android.material.button.MaterialButton android:id="@+id/event_manager_publish" style="@style/Widget.CampusHub.Button" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/event_manager_publish" />
         <com.google.android.material.button.MaterialButton android:id="@+id/event_manager_end" style="@style/Widget.CampusHub.Button.Tonal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_1" android:text="@string/event_manager_end" />
-        <com.google.android.material.button.MaterialButton android:id="@+id/event_manager_scan" style="@style/Widget.CampusHub.Button.Outlined" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_1" android:text="@string/event_manager_scan" />
     </LinearLayout>
 
     <TextView
@@ -87,6 +86,28 @@
             android:inputType="text"
             android:maxLines="1" />
     </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout
+        android:id="@+id/event_manager_attendance_requests_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/space_4"
+        android:paddingTop="@dimen/space_2"
+        android:paddingEnd="@dimen/space_4"
+        android:visibility="gone">
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/event_manager_attendance_requests_title"
+            android:textAppearance="@style/TextAppearance.CampusHub.Body" />
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/event_manager_attendance_requests"
+            android:layout_width="match_parent"
+            android:layout_height="160dp"
+            android:clipToPadding="false"
+            android:paddingTop="@dimen/space_1" />
+    </LinearLayout>
 
     <com.example.loginfirebase.ui.common.CampusStateView
         android:id="@+id/event_manager_state"
