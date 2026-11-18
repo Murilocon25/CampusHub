@@ -14,7 +14,13 @@ fun DocumentSnapshot.toCampusEvent() = mapCampusEventFields(
     startAt = getTimestamp("startAt"),
     endAt = getTimestamp("endAt"),
     creatorUid = getString("creatorUid"),
-    location = getGeoPoint("location")
+    location = getGeoPoint("location"),
+    capacity = getLong("capacity")?.toInt() ?: 0,
+    coverImageUrl = getString("coverImageUrl").orEmpty(),
+    status = EventPublicationStatus.fromFirestore(getString("status")),
+    confirmedCount = getLong("confirmedCount")?.toInt() ?: 0,
+    waitingCount = getLong("waitingCount")?.toInt() ?: 0,
+    reservedCount = getLong("reservedCount")?.toInt() ?: 0
 )
 
 internal fun mapCampusEventFields(
@@ -27,7 +33,13 @@ internal fun mapCampusEventFields(
     startAt: Timestamp?,
     endAt: Timestamp?,
     creatorUid: String?,
-    location: GeoPoint?
+    location: GeoPoint?,
+    capacity: Int = 0,
+    coverImageUrl: String = "",
+    status: EventPublicationStatus = EventPublicationStatus.PUBLISHED,
+    confirmedCount: Int = 0,
+    waitingCount: Int = 0,
+    reservedCount: Int = 0
 ) = CampusEvent(
     id = id,
     title = title.orEmpty(),
@@ -38,7 +50,13 @@ internal fun mapCampusEventFields(
     startAt = startAt,
     endAt = endAt,
     creatorUid = creatorUid.orEmpty(),
-    location = location
+    location = location,
+    capacity = capacity,
+    coverImageUrl = coverImageUrl,
+    status = status,
+    confirmedCount = confirmedCount,
+    waitingCount = waitingCount,
+    reservedCount = reservedCount
 )
 
 fun DocumentSnapshot.toEventComment() = mapEventCommentFields(

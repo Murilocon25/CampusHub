@@ -16,7 +16,13 @@ data class CampusEvent(
     val startAt: Timestamp? = null,
     val endAt: Timestamp? = null,
     val creatorUid: String = "",
-    val location: GeoPoint? = null
+    val location: GeoPoint? = null,
+    val capacity: Int = 0,
+    val coverImageUrl: String = "",
+    val status: EventPublicationStatus = EventPublicationStatus.PUBLISHED,
+    val confirmedCount: Int = 0,
+    val waitingCount: Int = 0,
+    val reservedCount: Int = 0
 ) {
     fun hasEnded(nowMillis: Long = System.currentTimeMillis()): Boolean =
         (endAt ?: startAt)?.toDate()?.time?.let { it <= nowMillis } ?: false
@@ -28,4 +34,16 @@ data class CampusEvent(
         SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", locale).apply { this.timeZone = timeZone }.format(it)
     }
             ?: date
+}
+
+enum class EventPublicationStatus(val firestoreValue: String) {
+    DRAFT("DRAFT"),
+    PUBLISHED("PUBLISHED"),
+    ENDED("ENDED");
+
+    companion object {
+        fun fromFirestore(value: String?): EventPublicationStatus = entries.firstOrNull {
+            it.firestoreValue == value
+        } ?: EventPublicationStatus.PUBLISHED
+    }
 }

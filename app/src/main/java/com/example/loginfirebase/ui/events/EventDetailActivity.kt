@@ -4,18 +4,22 @@ import android.Manifest
 import android.content.Intent
 import android.content.ClipData
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.drawable.GradientDrawable
+import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.RatingBar
 import android.widget.TextView
 import android.widget.Toast
@@ -35,6 +39,9 @@ import com.example.loginfirebase.data.model.CampusEvent
 import com.example.loginfirebase.data.model.toEventComment
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventRepository
+import com.example.loginfirebase.data.repository.EventRegistrationException
+import com.example.loginfirebase.data.repository.EventRegistrationFailureReason
+import com.example.loginfirebase.data.repository.UserRole
 import com.example.loginfirebase.data.repository.EventAudioInput
 import com.example.loginfirebase.data.repository.EventAudioInputException
 import com.example.loginfirebase.data.repository.EventMedia
@@ -54,11 +61,17 @@ import com.example.loginfirebase.ui.common.setCampusFont
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.GeoPoint
+import com.google.firebase.firestore.FirebaseFirestoreException
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -68,6 +81,7 @@ class EventDetailActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_EVENT_ID = "event_id"
         private const val MAX_VIDEO_DURATION_SECONDS = 60
+        private const val STATE_PENDING_PHOTO_CAPTURE = "pending_photo_capture"
         private const val STATE_PENDING_VIDEO_CAPTURE = "pending_video_capture"
     }
 
@@ -75,7 +89,9 @@ class EventDetailActivity : AppCompatActivity() {
     private val eventRepository = EventRepository()
     private lateinit var body: LinearLayout
     private lateinit var registrationBar: FrameLayout
+    private lateinit var viewModel: EventDetailViewModel
     private var eventId: String = ""
+    private var onLocationPicked: ((GeoPoint) -> Unit)? = null
     private var mapView: CampusMapView? = null
     private var savedMapState: Bundle? = null
     private var eventPhotosAdapter: EventPhotoAdapter? = null
@@ -88,6 +104,7 @@ class EventDetailActivity : AppCompatActivity() {
     private var pendingCameraPhoto: File? = null
     private var pendingAudioRecording: File? = null
     private var audioRecorder: MediaRecorder? = null
+    private var audioDurationLimitRunnable: Runnable? = null
     private var audioPlayer: MediaPlayer? = null
     private var currentlyPlayingAudioId: String? = null
     private var audioOwnerUid = ""
@@ -104,6 +121,7 @@ class EventDetailActivity : AppCompatActivity() {
     private var isVideoInputBusy = false
     private var videoOwnerUid = ""
     private val videoIoExecutor = Executors.newSingleThreadExecutor()
+    private val coverIoExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val galleryPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) publishEventPhoto(uri)
@@ -111,10 +129,32 @@ class EventDetailActivity : AppCompatActivity() {
     private val cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val photo = pendingCameraPhoto
         pendingCameraPhoto = null
-        if (result.resultCode == RESULT_OK && photo != null && photo.length() > 0L) {
-            publishCapturedEventPhoto(photo)
-        } else {
+        if (result.resultCode != RESULT_OK || photo == null) {
             photo?.delete()
+            return@registerForActivityResult
+        }
+
+        val returnedUri = result.data?.data
+            ?: result.data?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+        when {
+            photo.isFile && photo.length() > 0L -> publishCapturedEventPhoto(photo)
+            returnedUri != null -> {
+                photo.delete()
+                publishEventPhoto(returnedUri)
+            }
+            else -> {
+                val thumbnail = result.data?.extras?.get("data") as? Bitmap
+                val saved = thumbnail != null && runCatching {
+                    photo.outputStream().buffered().use { output ->
+                        thumbnail.compress(Bitmap.CompressFormat.JPEG, 90, output)
+                    }
+                }.getOrDefault(false)
+                if (saved && photo.length() > 0L) publishCapturedEventPhoto(photo)
+                else {
+                    photo.delete()
+                    showMessage(R.string.event_photo_camera_unavailable)
+                }
+            }
         }
     }
     private val videoPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -151,6 +191,17 @@ class EventDetailActivity : AppCompatActivity() {
         if (granted) beginAudioRecording()
         else showMessage(R.string.event_audio_permission_required)
     }
+    private val editLocationLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val data = result.data
+            val latitude = data?.getDoubleExtra(EventLocationPickerActivity.EXTRA_LATITUDE, Double.NaN) ?: Double.NaN
+            val longitude = data?.getDoubleExtra(EventLocationPickerActivity.EXTRA_LONGITUDE, Double.NaN) ?: Double.NaN
+            if (latitude.isFinite() && longitude.isFinite()) {
+                onLocationPicked?.invoke(GeoPoint(latitude, longitude))
+            }
+        }
+        onLocationPicked = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -166,6 +217,10 @@ class EventDetailActivity : AppCompatActivity() {
             finish()
             return
         }
+        pendingCameraPhoto = savedInstanceState
+            ?.getString(STATE_PENDING_PHOTO_CAPTURE)
+            ?.let(::File)
+            ?.takeIf(File::isFile)
         pendingVideoCapture = savedInstanceState
             ?.getString(STATE_PENDING_VIDEO_CAPTURE)
             ?.let(::File)
@@ -177,7 +232,7 @@ class EventDetailActivity : AppCompatActivity() {
         registrationBar = findViewById(R.id.event_detail_registration_bar)
         registrationBar.removeAllViews()
         findViewById<MaterialToolbar>(R.id.event_detail_toolbar).setNavigationOnClickListener { returnToEvents() }
-        val viewModel = ViewModelProvider(this)[EventDetailViewModel::class.java]
+        viewModel = ViewModelProvider(this)[EventDetailViewModel::class.java]
         viewModel.state.observe(this) { state ->
             when (state) {
                 EventDetailState.Loading -> body.showCampusState(getString(R.string.event_details_loading))
@@ -195,15 +250,13 @@ class EventDetailActivity : AppCompatActivity() {
     private fun renderEvent(event: CampusEvent, userId: String, displayName: String?, email: String?) {
         body.removeAllViews()
         registrationBar.removeAllViews()
-        registrationBar.isVisible = true
+        registrationBar.isVisible = false
         findViewById<TextView>(R.id.event_detail_header).text = event.title
+        loadEventCover(event.coverImageUrl)
         mediaOwnerUid = userId
         mediaAuthorName = displayName?.trim()?.takeIf(String::isNotBlank)
             ?: email?.substringBefore('@')?.takeIf(String::isNotBlank)
             ?: getString(R.string.profile_student_fallback)
-        eventRepository.getProfile(userId).addOnSuccessListener { profile ->
-            profile.getString("name")?.trim()?.takeIf(String::isNotBlank)?.let { mediaAuthorName = it }
-        }
         val overview = createDetailCard()
         val badges = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         badges.addView(createBadge(
@@ -211,14 +264,24 @@ class EventDetailActivity : AppCompatActivity() {
             R.color.color_blue_surface,
             R.color.color_blue_text
         ), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = resources.getDimensionPixelSize(R.dimen.space_2) })
-        val ended = event.hasEnded()
+        val ended = event.hasEnded() || event.status.firestoreValue == "ENDED"
         badges.addView(createBadge(
-            getString(if (ended) R.string.event_status_ended else R.string.event_status_upcoming),
+            getString(when {
+                event.status.firestoreValue == "DRAFT" -> R.string.event_status_draft
+                event.status.firestoreValue == "ENDED" || ended -> R.string.event_status_ended
+                else -> R.string.event_status_published
+            }),
             if (ended) R.color.color_background else R.color.color_blue_surface,
             if (ended) R.color.color_text_subtitle else R.color.color_blue_text
         ))
         overview.addView(badges)
         addDetailInfo(overview, getString(R.string.event_date_label), event.displayDate())
+        addDetailDivider(overview)
+        addDetailInfo(
+            overview,
+            getString(R.string.event_available_label),
+            getString(R.string.event_available_value, (event.capacity - event.confirmedCount - event.reservedCount).coerceAtLeast(0))
+        )
         addDetailDivider(overview)
         addDetailInfo(
             overview,
@@ -383,6 +446,101 @@ class EventDetailActivity : AppCompatActivity() {
                 .addOnFailureListener { showMessage(R.string.event_rating_save_error) }
         }
 
+        eventRepository.getProfile(userId)
+            .addOnSuccessListener { profile ->
+                profile.getString("name")?.trim()?.takeIf(String::isNotBlank)?.let { mediaAuthorName = it }
+                when (UserRole.fromFirestore(profile.getString("role"))) {
+                    UserRole.ORGANIZER -> if (event.creatorUid == userId) {
+                        addEditEventButton(event, userId)
+                        addManageEventButton(event.id)
+                    }
+                    UserRole.STUDENT -> configureStudentRegistration(event, userId, ratingSection, ratingBar)
+                }
+            }
+            .addOnFailureListener { showMessage(R.string.profile_load_error) }
+
+    }
+
+    private fun addEditEventButton(event: CampusEvent, userId: String) {
+        val button = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            setText(R.string.edit_event_button)
+            isAllCaps = false
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
+            insetTop = 0
+            insetBottom = 0
+            setOnClickListener { showEditEventDialog(event, userId) }
+        }
+        body.addView(button, 0, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_3)
+        })
+    }
+
+    private fun addManageEventButton(eventId: String) {
+        val button = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            setText(R.string.event_manage_button)
+            isAllCaps = false
+            minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
+            insetTop = 0
+            insetBottom = 0
+            setOnClickListener {
+                startActivity(Intent(this@EventDetailActivity, EventManagementActivity::class.java)
+                    .putExtra(EventManagementActivity.EXTRA_EVENT_ID, eventId))
+            }
+        }
+        body.addView(button, 0, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = resources.getDimensionPixelSize(R.dimen.space_2)
+        })
+    }
+
+    private fun showEditEventDialog(event: CampusEvent, userId: String) {
+        if (event.creatorUid != userId) {
+            showMessage(R.string.organizer_only_edit)
+            return
+        }
+        EventFormDialog(
+            activity = this,
+            requestLocation = { currentLocation, onPicked ->
+                onLocationPicked = onPicked
+                val pickerIntent = Intent(this, EventLocationPickerActivity::class.java)
+                currentLocation?.let {
+                    pickerIntent.putExtra(EventLocationPickerActivity.EXTRA_LATITUDE, it.latitude)
+                    pickerIntent.putExtra(EventLocationPickerActivity.EXTRA_LONGITUDE, it.longitude)
+                }
+                editLocationLauncher.launch(pickerIntent)
+            },
+            save = { existingEvent, values ->
+                if (existingEvent == null || existingEvent.creatorUid != userId) {
+                    Tasks.forException<Void>(SecurityException(getString(R.string.organizer_only_edit)))
+                } else {
+                    eventRepository.updateEvent(
+                        eventId = existingEvent.id,
+                        title = values.title,
+                        date = values.date,
+                        place = values.place,
+                        description = values.description,
+                        category = values.category,
+                        startAt = values.startAt,
+                        location = values.location,
+                        capacity = values.capacity,
+                        coverImageUrl = values.coverImageUrl
+                    )
+                }
+            },
+            onSaved = { _ ->
+                showMessage(R.string.edit_event_success)
+                viewModel.load(eventId)
+            },
+            onSaveFailed = { _ -> showMessage(R.string.edit_event_error) }
+        ).show(event)
+    }
+
+    private fun configureStudentRegistration(
+        event: CampusEvent,
+        userId: String,
+        ratingSection: LinearLayout,
+        ratingBar: RatingBar
+    ) {
+        val ended = event.hasEnded() || event.status.firestoreValue == "ENDED"
         val registrationButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
             isAllCaps = false
             minHeight = resources.getDimensionPixelSize(R.dimen.button_height)
@@ -391,52 +549,128 @@ class EventDetailActivity : AppCompatActivity() {
             setBackgroundTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.color_primary)))
             setTextColor(getColor(R.color.color_on_primary))
         }
-        registrationBar.addView(registrationButton, FrameLayout.LayoutParams(-1, -2))
+        val registrationNotice = TextView(this).apply {
+            text = getString(R.string.registration_limited_features_note)
+            setTextAppearance(R.style.TextAppearance_CampusHub_Caption)
+            visibility = View.GONE
+        }
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(registrationButton, LinearLayout.LayoutParams(-1, -2))
+            addView(registrationNotice, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = resources.getDimensionPixelSize(R.dimen.space_2)
+            })
+        }
+        registrationBar.addView(actions, FrameLayout.LayoutParams(-1, -2))
+        registrationBar.isVisible = true
         eventRepository.getRegistration(userId, event.id)
             .addOnSuccessListener { snapshot ->
-                var registrationState = EventRegistrationState(snapshot.exists())
+                var registrationStatus = snapshot.getString("status")
                 fun updateRegistrationUi() {
-                    registrationButton.setText(
-                        if (registrationState.isRegistered) R.string.registration_cancel else R.string.registration_join
-                    )
-                    ratingSection.visibility = if (registrationState.shouldShowRating(event.hasEnded())) {
-                        View.VISIBLE
-                    } else {
-                        View.GONE
-                    }
+                    val status = registrationStatus
+                    val active = status in setOf("CONFIRMADA", "LISTA_ESPERA", "AGUARDANDO_CONFIRMACAO", "PRESENTE")
+                    val registrationOpen = event.status.firestoreValue == "PUBLISHED" && !event.hasEnded()
+                    registrationBar.isVisible = active || registrationOpen
+                    registrationButton.isEnabled = status != "PRESENTE" && registrationOpen
+                    registrationButton.setText(when (status) {
+                        "CONFIRMADA" -> R.string.registration_cancel
+                        "LISTA_ESPERA" -> R.string.registration_leave_waitlist
+                        "AGUARDANDO_CONFIRMACAO" -> R.string.registration_cancel
+                        "PRESENTE" -> R.string.registration_present_message
+                        else -> R.string.registration_join
+                    })
+                    registrationNotice.isVisible = active && status != "PRESENTE"
+                    if (status == "PRESENTE") showMessage(R.string.registration_present_message)
+                    ratingSection.visibility = if (status in setOf("CONFIRMADA", "PRESENTE") && ended) View.VISIBLE else View.GONE
                 }
                 updateRegistrationUi()
-                if (registrationState.shouldShowRating(event.hasEnded())) {
+                if (registrationStatus in setOf("CONFIRMADA", "PRESENTE") && ended) {
                     eventRepository.getRating(userId, event.id).addOnSuccessListener { saved ->
                         saved.getLong("score")?.let { ratingBar.rating = it.toFloat() }
                     }
                 }
                 registrationButton.setOnClickListener {
-                    val update = if (registrationState.isRegistered) eventRepository.cancelRegistration(userId, event.id)
-                    else eventRepository.register(userId, event)
+                    val canceling = registrationStatus in setOf("CONFIRMADA", "LISTA_ESPERA", "AGUARDANDO_CONFIRMACAO")
+                    val update = if (canceling) {
+                        eventRepository.cancelRegistration(userId, event.id)
+                    } else {
+                        eventRepository.register(userId, event)
+                    }
                     update.addOnSuccessListener {
-                        registrationState = registrationState.afterToggleUpdate(succeeded = true)
+                        registrationStatus = it.data["status"] as? String ?: "CONFIRMADA"
                         updateRegistrationUi()
-                        if (registrationState.shouldShowRating(event.hasEnded())) {
-                            eventRepository.getRating(userId, event.id).addOnSuccessListener { saved ->
-                                saved.getLong("score")?.let { ratingBar.rating = it.toFloat() }
-                            }
-                        }
-                        showMessage(
-                            if (registrationState.isRegistered) R.string.registration_confirmed
-                            else R.string.registration_cancelled
-                        )
+                        showMessage(when (registrationStatus) {
+                            "CONFIRMADA" -> R.string.registration_confirmed
+                            else -> R.string.registration_cancelled
+                        })
+                        viewModel.load(eventId)
                     }.addOnFailureListener {
-                        registrationState = registrationState.afterToggleUpdate(succeeded = false)
-                        showMessage(
-                            if (registrationState.isRegistered) R.string.registration_cancel_error
-                            else R.string.registration_error
-                        )
+                        val message = when (it) {
+                            is EventRegistrationException -> when (it.reason) {
+                                EventRegistrationFailureReason.EVENT_CLOSED -> R.string.registration_ended
+                                EventRegistrationFailureReason.EVENT_FULL -> R.string.registration_full_no_waitlist
+                                EventRegistrationFailureReason.WAITLIST_REQUIRES_SERVER -> R.string.registration_legacy_waitlist_unavailable
+                                else -> if (canceling) R.string.registration_cancel_error else R.string.registration_error
+                            }
+                            is FirebaseFirestoreException -> when (it.code) {
+                                FirebaseFirestoreException.Code.PERMISSION_DENIED -> R.string.registration_rules_error
+                                FirebaseFirestoreException.Code.UNAVAILABLE,
+                                FirebaseFirestoreException.Code.DEADLINE_EXCEEDED -> R.string.registration_network_error
+                                else -> if (canceling) R.string.registration_cancel_error else R.string.registration_error
+                            }
+                            else -> if (canceling) R.string.registration_cancel_error else R.string.registration_error
+                        }
+                        showMessage(message)
                     }
                 }
             }
             .addOnFailureListener { showMessage(R.string.registration_check_error) }
+    }
 
+    private fun loadEventCover(imageUrl: String) {
+        val image = findViewById<ImageView>(R.id.event_detail_cover_image)
+        image.setImageResource(R.drawable.ic_event_cover)
+        if (!imageUrl.startsWith("https://", ignoreCase = true)) return
+        coverIoExecutor.execute {
+            val bitmap = runCatching {
+                val connection = (URL(imageUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 8_000
+                    readTimeout = 8_000
+                    instanceFollowRedirects = true
+                    requestMethod = "GET"
+                }
+                try {
+                    val type = connection.contentType.orEmpty()
+                    val length = connection.contentLengthLong
+                    if (connection.responseCode !in 200..299 || connection.url.protocol != "https" ||
+                        !type.startsWith("image/") || length > 8_388_608L) {
+                        null
+                    } else {
+                        connection.inputStream.use { stream ->
+                            val output = ByteArrayOutputStream()
+                            val buffer = ByteArray(8_192)
+                            var total = 0
+                            while (true) {
+                                val count = stream.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                if (total > 8_388_608) return@use null
+                                output.write(buffer, 0, count)
+                            }
+                            BitmapFactory.decodeByteArray(
+                                output.toByteArray(), 0, total,
+                                BitmapFactory.Options().apply { inSampleSize = 2 }
+                            )
+                        }
+                    }
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+            if (bitmap != null) mainHandler.post {
+                if (!isFinishing && !isDestroyed) image.setImageBitmap(bitmap) else bitmap.recycle()
+            }
+        }
     }
 
     private fun addEventPhotosSection(eventId: String, userId: String) {
@@ -729,24 +963,30 @@ class EventDetailActivity : AppCompatActivity() {
             return
         }
 
-        val recorder = MediaRecorder()
+        val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(this)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
         try {
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             recorder.setAudioSamplingRate(44_100)
             recorder.setAudioEncodingBitRate(96_000)
-            recorder.setMaxDuration(EventAudioInput.MAX_DURATION_MS.toInt())
             recorder.setOutputFile(destination.absolutePath)
-            recorder.setOnInfoListener { _, what, _ ->
-                if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) stopAndPublishAudio()
-            }
             recorder.prepare()
             recorder.start()
             pendingAudioRecording = destination
             audioRecorder = recorder
             audioRecordButton?.setText(R.string.event_audio_finish)
             audioRecordingHint?.visibility = View.VISIBLE
+            val durationLimit = Runnable {
+                if (audioRecorder === recorder) stopAndPublishAudio()
+            }
+            audioDurationLimitRunnable = durationLimit
+            mainHandler.postDelayed(durationLimit, EventAudioInput.MAX_DURATION_MS)
         } catch (_: Exception) {
             try { recorder.release() } catch (_: Exception) { }
             destination.delete()
@@ -757,6 +997,8 @@ class EventDetailActivity : AppCompatActivity() {
     private fun stopAndPublishAudio() {
         val recorder = audioRecorder ?: return
         audioRecorder = null
+        audioDurationLimitRunnable?.let(mainHandler::removeCallbacks)
+        audioDurationLimitRunnable = null
         audioRecordButton?.setText(R.string.event_audio_record)
         audioRecordingHint?.visibility = View.GONE
         val recording = pendingAudioRecording
@@ -1058,6 +1300,8 @@ class EventDetailActivity : AppCompatActivity() {
     private fun cancelAudioRecording() {
         val recorder = audioRecorder ?: return
         audioRecorder = null
+        audioDurationLimitRunnable?.let(mainHandler::removeCallbacks)
+        audioDurationLimitRunnable = null
         try { recorder.stop() } catch (_: Exception) { }
         try { recorder.release() } catch (_: Exception) { }
         pendingAudioRecording?.delete()
@@ -1067,9 +1311,14 @@ class EventDetailActivity : AppCompatActivity() {
     override fun onDestroy() {
         cancelAudioRecording()
         stopAudioPlayback(refresh = false)
-        pendingVideoCapture?.delete()
-        pendingVideoCapture = null
+        if (!isChangingConfigurations) {
+            pendingCameraPhoto?.delete()
+            pendingCameraPhoto = null
+            pendingVideoCapture?.delete()
+            pendingVideoCapture = null
+        }
         videoIoExecutor.shutdown()
+        coverIoExecutor.shutdown()
         super.onDestroy()
     }
 
@@ -1230,6 +1479,7 @@ class EventDetailActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         mapView?.saveMapState(outState)
+        pendingCameraPhoto?.absolutePath?.let { outState.putString(STATE_PENDING_PHOTO_CAPTURE, it) }
         pendingVideoCapture?.absolutePath?.let { outState.putString(STATE_PENDING_VIDEO_CAPTURE, it) }
         super.onSaveInstanceState(outState)
     }

@@ -12,6 +12,7 @@ import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.EventRepository
 import com.example.loginfirebase.data.repository.UserProfile
 import com.example.loginfirebase.data.repository.UserRepository
+import com.example.loginfirebase.data.repository.UserRole
 import com.example.loginfirebase.ui.events.EventDetailState
 import com.example.loginfirebase.ui.events.EventDetailViewModel
 import com.example.loginfirebase.ui.events.EventListState
@@ -29,6 +30,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.GeoPoint
+import com.google.firebase.functions.FirebaseFunctions
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -57,8 +59,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Runs against the local Firebase Auth and Firestore emulators. Start them with:
- * `firebase emulators:exec --only auth,firestore --project demo-campushub "./gradlew testDebugUnitTest --tests com.example.loginfirebase.integration.FirebaseEmulatorIntegrationTest"`.
- * Each test app uses a demo project ID and explicitly points both SDKs at localhost.
+ * Build functions first, then use `firebase emulators:exec --only auth,firestore,functions --project demo-campushub "./gradlew testDebugUnitTest --tests com.example.loginfirebase.integration.FirebaseEmulatorIntegrationTest"`.
+ * Each test app uses a demo project ID and explicitly points the Firebase SDKs at localhost.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
@@ -70,6 +72,7 @@ class FirebaseEmulatorIntegrationTest {
     private lateinit var firebaseApp: FirebaseApp
     private lateinit var auth: FirebaseAuth
     private lateinit var firestore: FirebaseFirestore
+    private lateinit var functions: FirebaseFunctions
     private lateinit var authRepository: AuthRepository
     private lateinit var eventRepository: EventRepository
     private lateinit var userRepository: UserRepository
@@ -78,7 +81,7 @@ class FirebaseEmulatorIntegrationTest {
     fun connectToFirebaseEmulators() {
         assumeTrue(
             "Start Firebase Auth and Firestore emulators for project $PROJECT_ID",
-            emulatorIsReachable(AUTH_PORT) && emulatorIsReachable(FIRESTORE_PORT)
+            emulatorIsReachable(AUTH_PORT) && emulatorIsReachable(FIRESTORE_PORT) && emulatorIsReachable(FUNCTIONS_PORT)
         )
 
         val context = RuntimeEnvironment.getApplication()
@@ -86,7 +89,7 @@ class FirebaseEmulatorIntegrationTest {
         firebaseApp = existingApp ?: FirebaseApp.initializeApp(
             context,
             FirebaseOptions.Builder()
-                .setApiKey("fake-api-key-for-local-tests")
+                .setApiKey("A" + "x".repeat(38))
                 .setApplicationId("1:1234567890:android:campushub-integration")
                 .setProjectId(PROJECT_ID)
                 .build(),
@@ -95,16 +98,18 @@ class FirebaseEmulatorIntegrationTest {
 
         auth = FirebaseAuth.getInstance(firebaseApp)
         firestore = FirebaseFirestore.getInstance(firebaseApp)
+        functions = FirebaseFunctions.getInstance(firebaseApp, "southamerica-east1")
         if (existingApp == null) {
             auth.useEmulator(EMULATOR_HOST, AUTH_PORT)
             firestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
+            functions.useEmulator(EMULATOR_HOST, FUNCTIONS_PORT)
             firestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
                 .setPersistenceEnabled(false)
                 .build()
         }
 
         authRepository = AuthRepository(auth)
-        eventRepository = EventRepository(firestore)
+        eventRepository = EventRepository(firestore, functions)
         userRepository = UserRepository(firestore, auth)
     }
 
@@ -174,7 +179,7 @@ class FirebaseEmulatorIntegrationTest {
 
     @Test
     fun profileViewModelSaveUpdatesFirestoreAndFirebaseAuthDisplayName() {
-        val user = createSignedInUser()
+        val user = createRoleUser(UserRole.STUDENT)
         val viewModel = ProfileViewModel(userRepository)
         val profile = UserProfile("Ana Souza", "Design", "Campus Central")
 
@@ -197,8 +202,22 @@ class FirebaseEmulatorIntegrationTest {
     }
 
     @Test
-    fun eventRepositoryWritesAnEventAndMapsTheFirestoreDocument() {
+    fun userCannotAssignTheOrganizerRoleToTheirOwnProfile() {
         val user = createSignedInUser()
+        val result = runCatching {
+            await(firestore.collection("users").document(user.uid).set(
+                mapOf("name" to "", "course" to "", "campus" to "", "role" to "organizer")
+            ))
+        }
+
+        val rejection = result.exceptionOrNull()
+        assertTrue("Users must not grant themselves organizer access", rejection is FirebaseFirestoreException)
+        assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, (rejection as FirebaseFirestoreException).code)
+    }
+
+    @Test
+    fun eventRepositoryWritesAnEventAndMapsTheFirestoreDocument() {
+        val user = createRoleUser(UserRole.ORGANIZER)
         val expected = newEvent(creatorUid = user.uid)
 
         val rejectedWrite = runCatching {
@@ -245,7 +264,7 @@ class FirebaseEmulatorIntegrationTest {
 
     @Test
     fun eventListViewModelLoadsFirestoreEventsFromTheRepository() {
-        val user = createSignedInUser()
+        val user = createRoleUser(UserRole.ORGANIZER)
         val expected = createEvent(user.uid)
         val viewModel = EventListViewModel(eventRepository)
 
@@ -263,7 +282,7 @@ class FirebaseEmulatorIntegrationTest {
 
     @Test
     fun eventDetailViewModelLoadsTheSelectedFirestoreEvent() {
-        val user = createSignedInUser()
+        val user = createRoleUser(UserRole.ORGANIZER)
         val expected = createEvent(user.uid)
         val viewModel = EventDetailViewModel(eventRepository)
 
@@ -282,7 +301,7 @@ class FirebaseEmulatorIntegrationTest {
 
     @Test
     fun eventRepositoryPublishesUpdatesAndDeletesACommentInFirestore() {
-        val user = createSignedInUser()
+        val user = createRoleUser(UserRole.ORGANIZER)
         val event = createEvent(user.uid)
         val commentRef = await(
             eventRepository.publishComment(event.id, user.uid, "Ana Souza", "Looks great")
@@ -302,8 +321,10 @@ class FirebaseEmulatorIntegrationTest {
 
     @Test
     fun eventRepositoryPersistsFavoritesAndRatingsForTheSignedInUser() {
-        val user = createSignedInUser()
-        val event = createEvent(user.uid)
+        val organizer = createRoleAccount(UserRole.ORGANIZER)
+        val event = createEvent(organizer.uid)
+        signIn(createRoleAccount(UserRole.STUDENT))
+        val user = assertNotNullAndGet(auth.currentUser)
 
         await(eventRepository.saveFavorite(user.uid, event.id))
         val favorite = await(eventRepository.getFavorite(user.uid, event.id))
@@ -322,8 +343,10 @@ class FirebaseEmulatorIntegrationTest {
 
     @Test
     fun userEventsViewModelLoadsAndCancelsARegisteredEvent() {
-        val user = createSignedInUser()
-        val event = createEvent(user.uid)
+        val organizer = createRoleAccount(UserRole.ORGANIZER)
+        val event = createEvent(organizer.uid)
+        val user = createRoleAccount(UserRole.STUDENT)
+        signIn(user)
 
         await(eventRepository.register(user.uid, event))
         val registration = await(eventRepository.getRegistration(user.uid, event.id))
@@ -343,7 +366,107 @@ class FirebaseEmulatorIntegrationTest {
         assertTrue((state as EventListState.Success).events.any { it.id == event.id })
 
         await(eventRepository.cancelRegistration(user.uid, event.id))
-        assertFalse(await(eventRepository.getRegistration(user.uid, event.id)).exists())
+        val cancelled = await(eventRepository.getRegistration(user.uid, event.id))
+        assertTrue(cancelled.exists())
+        assertEquals("CANCELADA", cancelled.getString("status"))
+    }
+
+    @Test
+    fun registrationsEnforceCapacityPromoteWaitlistInOrderAndValidateQrOnlyOnce() {
+        val organizer = createRoleAccount(UserRole.ORGANIZER)
+        val event = createEvent(organizer.uid, capacity = 1)
+        val firstStudent = createRoleAccount(UserRole.STUDENT)
+        val firstResult = await(eventRepository.register(firstStudent.uid, event)).data as Map<*, *>
+        assertEquals("CONFIRMADA", firstResult["status"])
+        val duplicateResult = await(eventRepository.register(firstStudent.uid, event)).data as Map<*, *>
+        assertEquals("CONFIRMADA", duplicateResult["status"])
+
+        val secondStudent = createRoleAccount(UserRole.STUDENT)
+        val secondResult = await(eventRepository.register(secondStudent.uid, event)).data as Map<*, *>
+        assertEquals("LISTA_ESPERA", secondResult["status"])
+        val thirdStudent = createRoleAccount(UserRole.STUDENT)
+        val thirdResult = await(eventRepository.register(thirdStudent.uid, event)).data as Map<*, *>
+        assertEquals("LISTA_ESPERA", thirdResult["status"])
+
+        val fullEvent = await(eventRepository.getEvent(event.id))
+        assertEquals(1L, fullEvent.getLong("confirmedCount"))
+        assertEquals(2L, fullEvent.getLong("waitingCount"))
+
+        signIn(firstStudent)
+        await(eventRepository.cancelRegistration(firstStudent.uid, event.id))
+        assertEquals("CANCELADA", await(eventRepository.getRegistration(firstStudent.uid, event.id)).getString("status"))
+        signIn(secondStudent)
+        assertEquals("AGUARDANDO_CONFIRMACAO", await(eventRepository.getRegistration(secondStudent.uid, event.id)).getString("status"))
+        val pendingDeadline = await(eventRepository.getRegistration(secondStudent.uid, event.id)).getTimestamp("confirmationExpiresAt")
+        assertNotNull("The promoted student should receive a confirmation deadline", pendingDeadline)
+        assertTrue(pendingDeadline!!.toDate().time > System.currentTimeMillis() + TimeUnit.HOURS.toMillis(23))
+        signIn(thirdStudent)
+        assertEquals("LISTA_ESPERA", await(eventRepository.getRegistration(thirdStudent.uid, event.id)).getString("status"))
+        val offeredEvent = await(eventRepository.getEvent(event.id))
+        assertEquals(0L, offeredEvent.getLong("confirmedCount"))
+        assertEquals(1L, offeredEvent.getLong("reservedCount"))
+        assertEquals(1L, offeredEvent.getLong("waitingCount"))
+
+        signIn(secondStudent)
+        val confirmation = await(eventRepository.confirmWaitlist(event.id)).data as Map<*, *>
+        assertEquals("CONFIRMADA", confirmation["status"])
+        val offerDeadline = await(eventRepository.getRegistration(secondStudent.uid, event.id))
+            .getTimestamp("confirmationExpiresAt")
+        assertEquals(null, offerDeadline)
+        val qr = await(eventRepository.getRegistrationQr(event.id)).data as Map<*, *>
+        val qrPayload = qr["qrPayload"] as String
+        assertTrue(qrPayload.startsWith("CAMPUSHUB|${event.id}|${secondStudent.uid}|"))
+        val occupiedEvent = await(eventRepository.getEvent(event.id))
+        assertEquals(1L, occupiedEvent.getLong("confirmedCount"))
+        assertEquals(0L, occupiedEvent.getLong("reservedCount"))
+
+        signIn(organizer)
+        val checkin = await(eventRepository.validateCheckIn(event.id, qrPayload)).data as Map<*, *>
+        assertEquals("PRESENTE", checkin["status"])
+        assertEquals(
+            "PRESENTE",
+            await(firestore.collection("events").document(event.id).collection("registrations").document(secondStudent.uid).get())
+                .getString("status")
+        )
+        val duplicateCheckIn = runCatching { await(eventRepository.validateCheckIn(event.id, qrPayload)) }.exceptionOrNull()
+        assertNotNull("A QR Code must not allow a second check-in", duplicateCheckIn)
+
+        signIn(thirdStudent)
+        val unauthorizedEnd = runCatching { await(eventRepository.endEvent(event.id)) }.exceptionOrNull()
+        assertNotNull("Students must not close events", unauthorizedEnd)
+        val unauthorizedCreate = runCatching {
+            await(eventRepository.createEvent(
+                title = "Student event",
+                date = event.date,
+                place = event.place,
+                description = event.description,
+                category = event.category,
+                startAt = event.startAt!!,
+                creatorUid = thirdStudent.uid,
+                location = event.location!!
+            ))
+        }.exceptionOrNull()
+        assertNotNull("Students must not create events", unauthorizedCreate)
+        val organizerB = createRoleAccount(UserRole.ORGANIZER)
+        val otherEvent = createEvent(organizerB.uid)
+        signIn(organizer)
+        val wrongEventQr = runCatching { await(eventRepository.validateCheckIn(otherEvent.id, qrPayload)) }.exceptionOrNull()
+        assertNotNull("A QR Code must not be accepted for a different event", wrongEventQr)
+        val unauthorizedEdit = runCatching {
+            await(eventRepository.updateEvent(
+                eventId = otherEvent.id,
+                title = otherEvent.title,
+                date = otherEvent.date,
+                place = otherEvent.place,
+                description = otherEvent.description,
+                category = otherEvent.category,
+                startAt = otherEvent.startAt!!,
+                location = otherEvent.location!!,
+                capacity = otherEvent.capacity,
+                coverImageUrl = otherEvent.coverImageUrl
+            ))
+        }.exceptionOrNull()
+        assertNotNull("Organizers must not edit another organizer's event", unauthorizedEdit)
     }
 
     private fun createSignedInUser(): FirebaseUser {
@@ -351,7 +474,64 @@ class FirebaseEmulatorIntegrationTest {
         return assertNotNullAndGet(result.user)
     }
 
-    private fun createEvent(uid: String): CampusEvent {
+    private fun createRoleUser(role: UserRole): FirebaseUser {
+        createRoleAccount(role)
+        return assertNotNullAndGet(auth.currentUser)
+    }
+
+    private fun createRoleAccount(role: UserRole): TestAccount {
+        val email = uniqueEmail()
+        val password = "StrongPass123!"
+        val result = await(authRepository.register(email, password))
+        val uid = assertNotNullAndGet(result.user).uid
+        val profile = if (role == UserRole.ORGANIZER) {
+            runCatching { writeOrganizerProfileThroughEmulatorAdminApi(uid) }
+        } else {
+            awaitCallback("create ${role.name.lowercase()} profile") { callback ->
+                userRepository.createEmptyProfile(uid, callback)
+            }
+        }
+        assertTrue("Failed to create ${role.name.lowercase()} profile: ${profile.exceptionOrNull()}", profile.isSuccess)
+        return TestAccount(email, password, uid)
+    }
+
+    private fun writeOrganizerProfileThroughEmulatorAdminApi(uid: String) {
+        val endpoint = URL(
+            "http://$EMULATOR_HOST:$FIRESTORE_PORT/v1/projects/$PROJECT_ID/databases/(default)/documents/users?documentId=$uid"
+        )
+        val fields = JSONObject()
+            .put("name", JSONObject().put("stringValue", "Test Organizer"))
+            .put("course", JSONObject().put("stringValue", ""))
+            .put("campus", JSONObject().put("stringValue", ""))
+            .put("role", JSONObject().put("stringValue", UserRole.ORGANIZER.firestoreValue))
+        val connection = endpoint.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.connectTimeout = EMULATOR_TIMEOUT_MS
+        connection.readTimeout = 10_000
+        connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer owner")
+        connection.setRequestProperty("Content-Type", "application/json")
+        try {
+            connection.outputStream.use { it.write(JSONObject().put("fields", fields).toString().toByteArray()) }
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                throw AssertionError("Could not seed organizer profile in emulator: HTTP $status $body")
+            }
+            connection.inputStream.close()
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun signIn(account: TestAccount) {
+        authRepository.signOut()
+        await(authRepository.signIn(account.email, account.password))
+    }
+
+    private data class TestAccount(val email: String, val password: String, val uid: String)
+
+    private fun createEvent(uid: String, capacity: Int = 100): CampusEvent {
         val expected = newEvent(uid)
         val reference = await(eventRepository.createEvent(
             title = expected.title,
@@ -361,9 +541,12 @@ class FirebaseEmulatorIntegrationTest {
             category = expected.category,
             startAt = expected.startAt!!,
             creatorUid = uid,
-            location = expected.location!!
+            location = expected.location!!,
+            capacity = capacity,
+            coverImageUrl = "https://example.test/campus-event.png"
         ))
-        return expected.copy(id = reference.id)
+        await(eventRepository.publishEvent(reference.id))
+        return expected.copy(id = reference.id, capacity = capacity, coverImageUrl = "https://example.test/campus-event.png")
     }
 
     private fun newEvent(creatorUid: String) = CampusEvent(
@@ -460,7 +643,8 @@ class FirebaseEmulatorIntegrationTest {
         const val EMULATOR_HOST = "127.0.0.1"
         const val AUTH_PORT = 9099
         const val FIRESTORE_PORT = 8080
+        const val FUNCTIONS_PORT = 5001
         const val EMULATOR_TIMEOUT_MS = 300
-        const val TEST_TIMEOUT_SECONDS = 20L
+        const val TEST_TIMEOUT_SECONDS = 60L
     }
 }

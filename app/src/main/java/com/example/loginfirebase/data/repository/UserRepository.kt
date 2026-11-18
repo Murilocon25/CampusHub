@@ -29,7 +29,8 @@ class UserRepository(
                 onResult(Result.success(mapUserProfileFields(
                     name = snapshot.getString("name"),
                     course = snapshot.getString("course"),
-                    campus = snapshot.getString("campus")
+                    campus = snapshot.getString("campus"),
+                    role = snapshot.getString("role")
                 )))
             }
             .addOnFailureListener { onResult(Result.failure(it)) }
@@ -61,9 +62,12 @@ class UserRepository(
         }
     }
 
-    fun createEmptyProfile(uid: String, onResult: (Result<Unit>) -> Unit) {
+    fun createEmptyProfile(
+        uid: String,
+        onResult: (Result<Unit>) -> Unit
+    ) {
         db.collection("users").document(uid).set(
-            mapOf("name" to "", "course" to "", "campus" to "")
+            mapOf("name" to "", "course" to "", "campus" to "", "role" to UserRole.STUDENT.firestoreValue)
         ).addOnSuccessListener { onResult(Result.success(Unit)) }
             .addOnFailureListener { onResult(Result.failure(it)) }
     }

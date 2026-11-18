@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.example.loginfirebase.R
 import com.example.loginfirebase.data.repository.AuthRepository
 import com.example.loginfirebase.data.repository.UserProfile
+import com.example.loginfirebase.data.repository.UserRole
 import com.example.loginfirebase.ui.common.CampusStateView
 import com.example.loginfirebase.ui.common.showCampusSnackbar
 import com.example.loginfirebase.ui.auth.LoginActivity
@@ -27,6 +28,7 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
         viewModel = ViewModelProvider(this)[ProfileViewModel::class.java]
         view.findViewById<TextView>(R.id.profile_email).text = user.email.orEmpty()
         val displayName = view.findViewById<TextView>(R.id.profile_display_name)
+        val roleLabel = view.findViewById<TextView>(R.id.profile_role)
         val avatar = view.findViewById<TextView>(R.id.profile_avatar)
         val courseBadge = view.findViewById<Chip>(R.id.profile_course_badge)
         val campusBadge = view.findViewById<Chip>(R.id.profile_campus_badge)
@@ -56,6 +58,12 @@ class ProfileFragment : Fragment(R.layout.fragment_profile) {
                     name.setText(profileName)
                     displayName.text = profileName
                     avatar.text = profileInitials(profileName)
+                    roleLabel.text = getString(
+                        R.string.profile_role_value,
+                        getString(if (screenState.profile.role == UserRole.ORGANIZER) {
+                            R.string.role_organizer
+                        } else R.string.role_student)
+                    )
                     course.setText(screenState.profile.course)
                     campus.setText(screenState.profile.campus)
                     courseBadge.isVisible = screenState.profile.course.isNotBlank()

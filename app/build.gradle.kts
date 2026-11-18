@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+val useFirebaseEmulators = providers.gradleProperty("useFirebaseEmulators")
+    .orNull
+    .toBoolean()
+
 android {
     namespace = "com.example.loginfirebase"
     compileSdk {
@@ -19,11 +23,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     buildTypes {
         debug {
             enableUnitTestCoverage = true
+            buildConfigField("boolean", "USE_FIREBASE_EMULATORS", useFirebaseEmulators.toString())
+            manifestPlaceholders["usesCleartextTraffic"] = useFirebaseEmulators.toString()
         }
         release {
+            buildConfigField("boolean", "USE_FIREBASE_EMULATORS", "false")
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             optimization {
                 enable = false
             }
@@ -50,6 +62,8 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.functions)
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation(libs.maplibre.android)
     implementation(libs.okhttp)
 

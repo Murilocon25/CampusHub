@@ -15,11 +15,18 @@ import com.google.android.material.card.MaterialCardView
 class EventAdapter(private val onOpen: (CampusEvent) -> Unit) :
     ListAdapter<CampusEvent, EventAdapter.EventViewHolder>(DIFF) {
 
+    private var registrationStatuses: Map<String, String> = emptyMap()
+
+    fun setRegistrationStatuses(statuses: Map<String, String>) {
+        registrationStatuses = statuses
+        notifyDataSetChanged()
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EventViewHolder = EventViewHolder(
         LayoutInflater.from(parent.context).inflate(R.layout.item_event, parent, false)
     )
 
-    override fun onBindViewHolder(holder: EventViewHolder, position: Int) = holder.bind(getItem(position))
+        override fun onBindViewHolder(holder: EventViewHolder, position: Int) = holder.bind(getItem(position))
 
     inner class EventViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val card = itemView as MaterialCardView
@@ -36,10 +43,27 @@ class EventAdapter(private val onOpen: (CampusEvent) -> Unit) :
             title.text = event.title
             date.text = context.getString(R.string.event_date, event.displayDate())
             place.text = context.getString(R.string.event_place, event.place.ifBlank { context.getString(R.string.not_informed) })
-            val ended = event.hasEnded()
-            status.text = context.getString(if (ended) R.string.event_status_ended else R.string.event_status_upcoming)
-            status.setChipBackgroundColorResource(if (ended) R.color.color_surface_variant else R.color.color_primary_container)
-            status.setTextColor(context.getColor(if (ended) R.color.color_text_subtitle else R.color.color_on_primary_container))
+            val registrationStatus = registrationStatuses[event.id]
+            if (registrationStatus != null) {
+                status.text = context.getString(when (registrationStatus) {
+                    "CONFIRMADA" -> R.string.registration_status_confirmed
+                    "LISTA_ESPERA" -> R.string.registration_status_waitlist
+                    "AGUARDANDO_CONFIRMACAO" -> R.string.registration_status_offer
+                    "PRESENTE" -> R.string.registration_status_present
+                    else -> R.string.registration_status_cancelled
+                })
+                status.setChipBackgroundColorResource(if (registrationStatus == "PRESENTE") R.color.color_success else R.color.color_primary_container)
+                status.setTextColor(context.getColor(if (registrationStatus == "PRESENTE") R.color.color_on_primary else R.color.color_on_primary_container))
+            } else {
+                val ended = event.hasEnded() || event.status.firestoreValue == "ENDED"
+                status.text = context.getString(when {
+                    event.status.firestoreValue == "DRAFT" -> R.string.event_status_draft
+                    ended -> R.string.event_status_ended
+                    else -> R.string.event_status_upcoming
+                })
+                status.setChipBackgroundColorResource(if (ended) R.color.color_surface_variant else R.color.color_primary_container)
+                status.setTextColor(context.getColor(if (ended) R.color.color_text_subtitle else R.color.color_on_primary_container))
+            }
             card.contentDescription = context.getString(R.string.event_card_description, event.title)
             open.setOnClickListener { onOpen(event) }
             card.setOnClickListener { onOpen(event) }

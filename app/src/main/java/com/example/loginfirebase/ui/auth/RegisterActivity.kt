@@ -31,7 +31,6 @@ class RegisterActivity : AppCompatActivity() {
         val btnCadastrar = findViewById<Button>(R.id.btnCadastrar)
         val txtVoltarLogin = findViewById<TextView>(R.id.txtVoltarLogin)
         val progressBar = findViewById<ProgressBar>(R.id.progressBarCadastro)
-
         btnCadastrar.setOnClickListener {
             val validation = validateRegisterInput(
                 emailInput = email.text.toString(),
@@ -74,16 +73,19 @@ class RegisterActivity : AppCompatActivity() {
                             return@addOnCompleteListener
                         }
 
-                        userRepository.createEmptyProfile(usuario.uid) { profileResult ->
-                            if (profileResult.isSuccess) {
-                                Toast.makeText(this, getString(R.string.register_success), Toast.LENGTH_SHORT).show()
-                                finish()
-                            } else {
-                                findViewById<View>(android.R.id.content).showCampusSnackbar(
-                                    R.string.profile_save_error, Snackbar.LENGTH_LONG
-                                )
+                        userRepository.createEmptyProfile(
+                            uid = usuario.uid,
+                            onResult = { profileResult ->
+                                if (profileResult.isSuccess) {
+                                    Toast.makeText(this, getString(R.string.register_success), Toast.LENGTH_SHORT).show()
+                                    finish()
+                                } else {
+                                    findViewById<View>(android.R.id.content).showCampusSnackbar(
+                                        R.string.profile_save_error, Snackbar.LENGTH_LONG
+                                    )
+                                }
                             }
-                        }
+                        )
                     } else {
                         findViewById<View>(android.R.id.content).showCampusSnackbar(
                             firebaseErrorMessage(task.exception), Snackbar.LENGTH_LONG
